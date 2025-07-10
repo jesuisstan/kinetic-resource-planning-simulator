@@ -1,0 +1,25 @@
+{
+  "name": "production-chain-simulator",
+  "version": "1.0.0",
+  "description": "Simulator for optimizing and analyzing production process chains with resource constraints (TypeScript)",
+  "main": "dist/krpsim.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/krpsim.js",
+    "verif": "node dist/krpsim_verif.js",
+    "dev": "ts-node src/krpsim.ts"
+  },
+  "keywords": [
+    "simulator",
+    "production",
+    "chain",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
