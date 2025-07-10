@@ -7,7 +7,11 @@
     "build": "tsc",
     "start": "node dist/krpsim.js",
     "verif": "node dist/krpsim_verif.js",
-    "dev": "ts-node src/krpsim.ts"
+    "dev": "ts-node src/krpsim.ts",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "clean:all": "rm -rf dist node_modules *.tsbuildinfo package-lock.json",
+    "rebuild": "npm run clean && npm run build",
+    "rebuild-full": "npm run clean:all && npm install && npm run build"
   },
   "keywords": [
     "simulator",
@@ -18,8 +22,8 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "typescript": "^5.8.3",
     "@types/node": "^24.0.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "ts-node": "^10.9.2"
   }
 }
