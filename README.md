@@ -45,21 +45,41 @@ npm run build
 
 ## Run Simulator
 
+**Using npm script:**
+
 ```sh
 npm start -- <config_file> <max_delay>
-# or for development
+```
+
+**For development (TypeScript directly):**
+
+```sh
 npx ts-node src/krpsim.ts <config_file> <max_delay>
-# or run directly after build
+```
+
+**Run directly after build:**
+
+```sh
 node dist/krpsim.js <config_file> <max_delay>
 ```
 
 ## Run Verifier
 
+**Using npm script:**
+
 ```sh
 npm run verif -- <config_file> <trace_file>
-# or for development
+```
+
+**For development (TypeScript directly):**
+
+```sh
 npx ts-node src/krpsim_verif.ts <config_file> <trace_file>
-# or run directly after build
+```
+
+**Run directly after build:**
+
+```sh
 node dist/krpsim_verif.js <config_file> <trace_file>
 ```
 
