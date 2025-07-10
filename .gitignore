@@ -1,0 +1,40 @@
+# dependencies
+/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
+.env
+.env.*.local
+
+# build output
+/dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# misc
+*.pem
+*.log
+
+# temporary files
+tmp/
+temp/
+*.tmp
+
+# AI/assistant files
+.codegpt
+.cursor
