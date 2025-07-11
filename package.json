@@ -1,5 +1,5 @@
 {
-  "name": "production-chain-simulator",
+  "name": "kinetic-resource-planning-simulator",
   "version": "1.0.0",
   "description": "Simulator for optimizing and analyzing production process chains with resource constraints (TypeScript)",
   "main": "dist/krpsim.js",
@@ -15,8 +15,8 @@
   },
   "keywords": [
     "simulator",
-    "production",
-    "chain",
+    "planning",
+    "resource",
     "typescript"
   ],
   "author": "",

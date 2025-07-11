@@ -3,7 +3,7 @@
 // eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference types="node" />
 
-// Production Chain Simulator (TypeScript)
+// Kinetic Resource Planning Simulator (TypeScript)
 // CLI entry point
 
 import { parseConfigFile, printConfigSummary, validateConfig } from './parser';
