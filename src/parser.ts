@@ -1,6 +1,5 @@
-// parser.ts
-// Parser for the configuration file for the production chain simulator
-
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference types="node" />
 import * as fs from 'fs';
 
 export interface Stock {
@@ -26,21 +25,21 @@ export interface ConfigData {
   optimize: OptimizeGoal;
 }
 
-function parseNeedsOrResults(
+const parseNeedsOrResults = (
   str: string
-): { name: string; quantity: number }[] {
+): { name: string; quantity: number }[] => {
   if (!str.trim()) return [];
-  return str.split(';').map((pair) => {
-    const [name, qty] = pair.split(':').map((s) => s.trim());
+  return str.split(';').map((pair: string) => {
+    const [name, qty] = pair.split(':').map((s: string) => s.trim());
     if (!name || isNaN(Number(qty)))
       throw new Error(`Invalid need/result: ${pair}`);
     return { name, quantity: Number(qty) };
   });
-}
+};
 
-export function parseConfigFile(path: string): ConfigData {
+export const parseConfigFile = (path: string): ConfigData => {
   const content = fs.readFileSync(path, 'utf-8');
-  const lines = content.split(/\r?\n/).map((l) => l.trim());
+  const lines = content.split(/\r?\n/).map((l: string) => l.trim());
   const stocks: Stock[] = [];
   const processes: Process[] = [];
   let optimize: OptimizeGoal | null = null;
@@ -49,15 +48,17 @@ export function parseConfigFile(path: string): ConfigData {
     if (!line || line.startsWith('#')) continue;
     if (line.startsWith('optimize:')) {
       const optStr = line.slice('optimize:'.length).replace(/[()]/g, '').trim();
-      const parts = optStr.split(';').map((s) => s.trim());
+      const parts = optStr.split(';').map((s: string) => s.trim());
       const time = parts.includes('time');
-      const stocksOpt = parts.filter((s) => s !== 'time' && s.length > 0);
+      const stocksOpt = parts.filter(
+        (s: string) => s !== 'time' && s.length > 0
+      );
       optimize = { time, stocks: stocksOpt };
       continue;
     }
     if (line.includes(':') && !line.includes('(')) {
       // stock line
-      const [name, qty] = line.split(':').map((s) => s.trim());
+      const [name, qty] = line.split(':').map((s: string) => s.trim());
       if (!name || isNaN(Number(qty)))
         throw new Error(`Invalid stock: ${line}`);
       stocks.push({ name, quantity: Number(qty) });
@@ -75,9 +76,9 @@ export function parseConfigFile(path: string): ConfigData {
   }
   if (!optimize) throw new Error('No optimize line found');
   return { stocks, processes, optimize };
-}
+};
 
-export function validateConfig(config: ConfigData): void {
+export const validateConfig = (config: ConfigData): void => {
   // TODO: implement structure validation (e.g., unique names, non-negative values, valid optimize)
   return;
-}
+};

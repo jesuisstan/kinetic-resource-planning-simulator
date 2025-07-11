@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference types="node" />
+
 // Production Chain Simulator (TypeScript)
 // CLI entry point
 
-function printUsage() {
+const printUsage = (): void => {
   console.log('Usage: npm start -- <config_file> <max_delay>');
   console.log('       npx ts-node src/krpsim.ts <config_file> <max_delay>');
-}
+};
 
-function main() {
+export const main = (): void => {
   const args = process.argv.slice(2);
   if (args.length !== 2) {
     printUsage();
@@ -17,6 +20,6 @@ function main() {
   const [configFile, maxDelay] = args;
   console.log(`Simulating with config: ${configFile}, max delay: ${maxDelay}`);
   // TODO: implement simulation logic
-}
+};
 
 main();
