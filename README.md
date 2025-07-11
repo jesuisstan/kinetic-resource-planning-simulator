@@ -14,7 +14,7 @@ This project simulates the execution of production processes with limited resour
 
 - Reads configs with resources and processes
 - Simulates process execution with delays and constraints
-- Supports two algorithm modes: basic (greedy) and optimized
+- Supports two algorithm modes: default (optimal) and bonus (exhaustive)
 - Optimization by time or target resource
 - Generates trace log for verification
 - CLI interface
@@ -24,16 +24,19 @@ This project simulates the execution of production processes with limited resour
 
 The simulator supports two algorithm modes:
 
-- **Basic (default):**
+- **Default (optimal, fast):**
 
-  - Simple greedy algorithm: always schedules the first available process in the order they appear in the config file.
-  - Fast and easy to understand, but not guaranteed to find the optimal solution.
+  - Implements an efficient algorithm (e.g., dynamic programming or graph search) to find an optimal solution for the given optimization goals (time, resource, or both).
+  - Guaranteed to produce a correct and optimal result for any valid config.
+  - Recommended for most use cases.
 
-- **Optimized (with `--optimize` flag):**
-  - Uses a more advanced algorithm to find a better (possibly optimal) schedule.
-  - May take more time to compute, but can produce better results for complex scenarios.
+- **Bonus (exhaustive, perfect optimization, with `--bonus` flag):**
+  - Uses an exhaustive search or provably perfect optimization algorithm (e.g., full search, branch & bound).
+  - Always finds the best possible result for any valid config, even in the most complex scenarios.
+  - May be significantly slower for large configs, but guarantees the perfect solution.
+  - Intended for validation, research, or when absolute optimality is required.
 
-You can select the algorithm mode by adding the `--optimize` flag to the command line.
+You can select the algorithm mode by adding the `--bonus` flag to the command line.
 
 ## Project Structure
 
@@ -61,28 +64,28 @@ npm run build
 
 ## Run Simulator
 
-**Using npm script (basic algorithm):**
+**Default mode (optimal, fast):**
 
 ```sh
 npm start -- <config_file> <max_delay>
 ```
 
-**Using npm script (optimized algorithm):**
+**Bonus mode (exhaustive, perfect optimization):**
 
 ```sh
-npm start -- <config_file> <max_delay> --optimize
+npm start -- <config_file> <max_delay> --bonus
 ```
 
 **For development (TypeScript directly):**
 
 ```sh
-npx ts-node src/krpsim.ts <config_file> <max_delay> [--optimize]
+npx ts-node src/krpsim.ts <config_file> <max_delay> [--bonus]
 ```
 
 **Run directly after build:**
 
 ```sh
-node dist/krpsim.js <config_file> <max_delay> [--optimize]
+node dist/krpsim.js <config_file> <max_delay> [--bonus]
 ```
 
 ## Run Verifier

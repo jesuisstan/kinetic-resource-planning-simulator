@@ -146,6 +146,7 @@ export const validateConfig = (config: ConfigData): void => {
 
 export const printConfigSummary = (config: ConfigData): void => {
   console.log('Config loaded successfully!');
+  console.log(`---------------------`);
   console.log('Stocks:');
   config.stocks.forEach((stock) => {
     console.log(`  - ${stock.name}: ${stock.quantity}`);
@@ -169,4 +170,5 @@ export const printConfigSummary = (config: ConfigData): void => {
     .filter(Boolean)
     .join(', ');
   console.log(`Optimization goal: ${goals}`);
+  console.log(`---------------------`);
 };

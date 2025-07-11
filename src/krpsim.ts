@@ -7,6 +7,8 @@
 // CLI entry point
 
 import { parseConfigFile, printConfigSummary, validateConfig } from './parser';
+import { runSimulation } from './simulator';
+import { runBonusSimulation } from './simulator_bonus';
 
 const printUsage = (): void => {
   console.log('Usage: npm start -- <config_file> <max_delay>');
@@ -15,16 +17,30 @@ const printUsage = (): void => {
 
 export const main = (): void => {
   const args = process.argv.slice(2);
-  if (args.length !== 2) {
+  const bonus = args.includes('--bonus');
+  const filteredArgs = args.filter((arg) => arg !== '--bonus');
+  if (filteredArgs.length !== 2) {
     printUsage();
     process.exit(1);
   }
-  const [configFile, maxDelay] = args;
+  const [configFile, maxDelayStr] = filteredArgs;
+  const maxDelay = Number(maxDelayStr);
+  if (isNaN(maxDelay) || maxDelay < 0) {
+    console.error(
+      'Invalid max_delay argument. It must be a non-negative integer.'
+    );
+    process.exit(1);
+  }
   console.log(`Simulating with config: ${configFile}, max delay: ${maxDelay}`);
   try {
     const config = parseConfigFile(configFile);
     validateConfig(config);
     printConfigSummary(config);
+    if (bonus) {
+      runBonusSimulation(config, maxDelay);
+    } else {
+      runSimulation(config, maxDelay);
+    }
   } catch (err) {
     console.error(
       'Failed to parse or validate config:',
@@ -32,7 +48,6 @@ export const main = (): void => {
     );
     process.exit(1);
   }
-  // TODO: implement simulation logic
 };
 
 main();
