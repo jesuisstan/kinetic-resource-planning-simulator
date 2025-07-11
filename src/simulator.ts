@@ -1,15 +1,17 @@
 import { ConfigData, Stock, Process, OptimizeGoal } from './parser';
 
+export interface SimulationResult {
+  trace: { cycle: number; process: string }[];
+  stepLogs: StepLog[];
+  finalStocks: Record<string, number>;
+  lastCycle: number;
+}
+
 interface SimulationOptions {
   optimize?: boolean;
 }
 
-interface TraceEntry {
-  cycle: number;
-  process: string;
-}
-
-interface StepLog {
+export interface StepLog {
   time: number;
   stocksBefore: Record<string, number>;
   stocksAfter: Record<string, number>;
@@ -90,15 +92,13 @@ export const runSimulation = (
   config: ConfigData,
   maxDelay: number,
   options: SimulationOptions = {}
-): void => {
-  const startTime = Date.now();
+): SimulationResult => {
   const stocks = cloneStocks(config.stocks);
-  const trace: TraceEntry[] = [];
+  const trace: { cycle: number; process: string }[] = [];
   let time = 0;
   let running: { process: Process; finish: number }[] = [];
   const stepLogs: StepLog[] = [];
 
-  // Calculate process priorities for optimize stocks (if any)
   const optimizeStocks =
     config.optimize.stocks.length > 0 ? config.optimize.stocks : [];
   const priorities = calculateProcessPriorities(
@@ -110,7 +110,6 @@ export const runSimulation = (
   while (time <= maxDelay) {
     const stocksBefore = { ...stocks };
     const finished: string[] = [];
-    // 1. Complete processes that finish at this time
     running = running.filter((entry) => {
       if (entry.finish === time) {
         entry.process.results.forEach((r) => {
@@ -120,8 +119,6 @@ export const runSimulation = (
       }
       return entry.finish > time;
     });
-
-    // 2. Find all processes that can be started
     let startable: Process[] = config.processes.filter((proc) =>
       proc.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)
     );
@@ -137,7 +134,6 @@ export const runSimulation = (
     let anyStarted = false;
     const started: string[] = [];
     for (const proc of startable) {
-      // Check again (resources may have changed after previous starts)
       if (proc.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)) {
         proc.needs.forEach((n) => {
           stocks[n.name] -= n.quantity;
@@ -156,32 +152,10 @@ export const runSimulation = (
     time++;
   }
 
-  // Output step-by-step log in block format
-  console.log('Step-by-step simulation log:');
-  stepLogs.forEach((step) => {
-    const stocksB = Object.entries(step.stocksBefore)
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    const stocksA = Object.entries(step.stocksAfter)
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    console.log(`Time: ${step.time}`);
-    console.log(`  Started: ${step.started.join(', ') || '-'}`);
-    console.log(`  Finished: ${step.finished.join(', ') || '-'}`);
-    console.log(`  Stocks before: ${stocksB || '-'}`);
-    console.log(`  Stocks after:  ${stocksA || '-'}`);
-    console.log('----');
-  });
-
-  // Output trace log (classic format)
-  trace.forEach((entry) => {
-    console.log(`${entry.cycle}:${entry.process}`);
-  });
-  console.log('Stock :');
-  Object.entries(stocks).forEach(([name, qty]) => {
-    console.log(`${name} => ${qty}`);
-  });
-  const elapsed = Date.now() - startTime;
-  console.log('---------------------');
-  console.log(`Total simulation time: ${elapsed} ms`);
+  return {
+    trace,
+    stepLogs,
+    finalStocks: { ...stocks },
+    lastCycle: time - 1
+  };
 };

@@ -9,6 +9,7 @@
 import { parseConfigFile, printConfigSummary, validateConfig } from './parser';
 import { runSimulation } from './simulator';
 import { runBonusSimulation } from './simulator_bonus';
+import { printSimulationResult } from './output';
 
 const printUsage = (): void => {
   console.log('Usage: npm start -- <config_file> <max_delay>');
@@ -37,9 +38,11 @@ export const main = (): void => {
     validateConfig(config);
     printConfigSummary(config);
     if (bonus) {
+      // TODO: When runBonusSimulation returns a result, print it here
       runBonusSimulation(config, maxDelay);
     } else {
-      runSimulation(config, maxDelay);
+      const result = runSimulation(config, maxDelay);
+      printSimulationResult(result);
     }
   } catch (err) {
     console.error(
