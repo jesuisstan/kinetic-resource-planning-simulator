@@ -14,10 +14,26 @@ This project simulates the execution of production processes with limited resour
 
 - Reads configs with resources and processes
 - Simulates process execution with delays and constraints
+- Supports two algorithm modes: basic (greedy) and optimized
 - Optimization by time or target resource
 - Generates trace log for verification
 - CLI interface
 - Trace log verifier
+
+## Algorithm Modes
+
+The simulator supports two algorithm modes:
+
+- **Basic (default):**
+
+  - Simple greedy algorithm: always schedules the first available process in the order they appear in the config file.
+  - Fast and easy to understand, but not guaranteed to find the optimal solution.
+
+- **Optimized (with `--optimize` flag):**
+  - Uses a more advanced algorithm to find a better (possibly optimal) schedule.
+  - May take more time to compute, but can produce better results for complex scenarios.
+
+You can select the algorithm mode by adding the `--optimize` flag to the command line.
 
 ## Project Structure
 
@@ -45,22 +61,28 @@ npm run build
 
 ## Run Simulator
 
-**Using npm script:**
+**Using npm script (basic algorithm):**
 
 ```sh
 npm start -- <config_file> <max_delay>
 ```
 
+**Using npm script (optimized algorithm):**
+
+```sh
+npm start -- <config_file> <max_delay> --optimize
+```
+
 **For development (TypeScript directly):**
 
 ```sh
-npx ts-node src/krpsim.ts <config_file> <max_delay>
+npx ts-node src/krpsim.ts <config_file> <max_delay> [--optimize]
 ```
 
 **Run directly after build:**
 
 ```sh
-node dist/krpsim.js <config_file> <max_delay>
+node dist/krpsim.js <config_file> <max_delay> [--optimize]
 ```
 
 ## Run Verifier
