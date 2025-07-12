@@ -103,21 +103,22 @@ export const runSimulation = (
     config.optimize.stocks.length > 0 ? config.optimize.stocks : [];
   const optimize = config.optimize;
 
-  // If optimize:time, use old greedy mode
-  if (optimize.time && optimizeStocks.length === 0) {
-    // ... old logic ...
-    // (copy from previous version if needed)
-  }
-
-  // If optimize:stock, use strict dynamic planche reservation for remaining components
-  const target = optimizeStocks[0];
+  // Determine optimization mode
+  // If we have specific stocks to optimize, prioritize them over time optimization
+  let useGreedyMode = optimize.time && optimizeStocks.length === 0;
+  let target = optimizeStocks[0];
   let batchNeeds: { name: string; quantity: number }[] = [];
   let topoOrder: Process[] = [];
+
   if (target) {
     const proc = getProcessByResult(config.processes, target);
     if (proc) {
       batchNeeds = proc.needs.map((n) => ({ ...n }));
       topoOrder = topoSortProcesses(config.processes, target);
+      console.log(
+        `Topological order for ${target}:`,
+        topoOrder.map((p) => p.name)
+      );
     }
   }
   let targetsMade = 0;
@@ -126,6 +127,7 @@ export const runSimulation = (
     const stocksBefore = { ...stocks };
     const started: string[] = [];
     const finished: string[] = [];
+
     // Complete processes that finish in this cycle
     running = running.filter((entry) => {
       if (entry.finish === cycle) {
@@ -137,40 +139,50 @@ export const runSimulation = (
       }
       return entry.finish > cycle;
     });
-    // Check if we have enough intermediate resources for one complete set
-    const proc = getProcessByResult(config.processes, target);
-    if (!proc) break;
 
-    let canAssemble = proc.needs.every(
-      (n) => (stocks[n.name] || 0) >= n.quantity
-    );
-
-    if (canAssemble) {
-      // Start armoire assembly
-      proc.needs.forEach((n) => {
-        stocks[n.name] -= n.quantity;
-      });
-      running.push({ process: proc, finish: cycle + proc.delay });
-      trace.push({ cycle, process: proc.name });
-      started.push(proc.name);
-    } else {
-      // Find all needed processes in topological order that are actually needed for the complete set
+    if (useGreedyMode) {
+      // Greedy mode: start any process that can be started
+      let launchedAny = false;
+      for (const proc of config.processes) {
+        const maxStarts = maxProcessStarts(proc, stocks);
+        if (maxStarts > 0) {
+          // Start as many as possible
+          for (let i = 0; i < maxStarts; i++) {
+            proc.needs.forEach((n) => {
+              stocks[n.name] -= n.quantity;
+            });
+            running.push({ process: proc, finish: cycle + proc.delay });
+            trace.push({ cycle, process: proc.name });
+            started.push(proc.name);
+            launchedAny = true;
+          }
+        }
+      }
+      if (!launchedAny && running.length === 0) break;
+    } else if (target) {
+      // Universal demand-propagation logic for target optimization
+      // 1. Build demandMap: for each resource, how many needed for 1 target
+      const demandMap: Record<string, number> = {};
+      function buildDemand(res: string, qty: number) {
+        demandMap[res] = (demandMap[res] || 0) + qty;
+        const proc = getProcessByResult(config.processes, res);
+        if (proc) {
+          proc.needs.forEach((n) => buildDemand(n.name, n.quantity * qty));
+        }
+      }
+      buildDemand(target, 1);
       let launchedAny = false;
       for (const p of topoOrder) {
-        if (p.name === proc.name) continue;
         const resName = p.results[0]?.name;
-        if (!resName) continue;
-        const needQty =
-          batchNeeds.find((n) => n.name === resName)?.quantity || 0;
+        if (!resName || !demandMap[resName]) continue;
+        // Сколько уже произведено этого ресурса?
         const have = stocks[resName] || 0;
-        // How many more of this resource do we need to produce for the complete set?
-        const toProduce = Math.max(0, needQty - have);
+        // Сколько ещё нужно для полного target?
+        const need = demandMap[resName];
+        const toProduce = Math.max(0, need - have);
         if (toProduce > 0) {
-          // How many times can we start this process?
           let maxStarts = maxProcessStarts(p, stocks);
           maxStarts = Math.min(maxStarts, toProduce);
-
-          // Start as many processes as possible
           for (let i = 0; i < maxStarts; i++) {
             p.needs.forEach((n) => {
               stocks[n.name] -= n.quantity;
@@ -182,19 +194,26 @@ export const runSimulation = (
           }
         }
       }
-      // Continue working if there are running processes or we can start something
-      if (!launchedAny && running.length === 0) {
-        // Check if we can still produce anything from remaining resources
-        let canProduceAnything = false;
-        for (const p of config.processes) {
-          if (maxProcessStarts(p, stocks) > 0) {
-            canProduceAnything = true;
-            break;
-          }
-        }
-        if (!canProduceAnything) break;
+      // После производства всех компонентов, если хватает для сборки target, запускаем его
+      const procTarget = getProcessByResult(config.processes, target);
+      if (
+        procTarget &&
+        procTarget.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)
+      ) {
+        procTarget.needs.forEach((n) => {
+          stocks[n.name] -= n.quantity;
+        });
+        running.push({ process: procTarget, finish: cycle + procTarget.delay });
+        trace.push({ cycle, process: procTarget.name });
+        started.push(procTarget.name);
+        launchedAny = true;
       }
+      if (!launchedAny && running.length === 0) break;
+    } else {
+      // fallback: do nothing
+      break;
     }
+
     if (started.length > 0 || finished.length > 0) {
       stepLogs.push({
         time: cycle,
