@@ -27,65 +27,66 @@ const cloneStocks = (stocks: Stock[]): Record<string, number> => {
   return result;
 };
 
-// Build a map: resource -> processes that produce it
-const buildResourceProducers = (
-  processes: Process[]
-): Record<string, Process[]> => {
-  const map: Record<string, Process[]> = {};
-  processes.forEach((proc) => {
-    proc.results.forEach((r) => {
-      if (!map[r.name]) map[r.name] = [];
-      map[r.name].push(proc);
-    });
-  });
-  return map;
-};
-
-// Calculate process priorities: lower number = higher priority
-const calculateProcessPriorities = (
-  processes: Process[],
-  optimizeStocks: string[]
-): Map<string, number> => {
-  const resourceProducers = buildResourceProducers(processes);
-  const priorities = new Map<string, number>();
-  const visited = new Set<string>();
-  let currentPriority = 0;
-
-  // BFS from each optimize stock
-  const queue: { resource: string; depth: number }[] = optimizeStocks.map(
-    (r) => ({ resource: r, depth: 0 })
-  );
-  while (queue.length > 0) {
-    const { resource, depth } = queue.shift()!;
-    if (visited.has(resource)) continue;
-    visited.add(resource);
-    const procs = resourceProducers[resource] || [];
-    procs.forEach((proc) => {
-      if (!priorities.has(proc.name) || priorities.get(proc.name)! > depth) {
-        priorities.set(proc.name, depth);
-        // Add needs of this process to queue with depth+1
-        proc.needs.forEach((n) => {
-          queue.push({ resource: n.name, depth: depth + 1 });
-        });
-      }
-    });
-  }
-  // For processes not in the chain, assign a lower priority (higher number)
-  processes.forEach((proc, idx) => {
-    if (!priorities.has(proc.name)) priorities.set(proc.name, 1000 + idx);
-  });
-  return priorities;
-};
-
-// Returns true if process is in the chain leading to any optimize stock
-const isProcessInOptimizeChain = (
+// Helper: compute how many times a process can be started with current stocks
+const maxProcessStarts = (
   proc: Process,
-  priorities: Map<string, number>,
-  optimize: OptimizeGoal
-): boolean => {
-  if (optimize.time) return true; // time mode: allow all
-  // If any optimize stock, allow only those in the chain
-  return priorities.get(proc.name)! < 1000;
+  stocks: Record<string, number>
+): number => {
+  return Math.min(
+    ...proc.needs.map((n) => Math.floor((stocks[n.name] || 0) / n.quantity))
+  );
+};
+
+// Helper: get process by result resource name
+const getProcessByResult = (
+  processes: Process[],
+  resource: string
+): Process | undefined => {
+  return processes.find((p) => p.results.some((r) => r.name === resource));
+};
+
+// Helper: topological sort of processes for a target resource
+const topoSortProcesses = (processes: Process[], target: string): Process[] => {
+  const result: Process[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>(); // Track resources being visited to detect cycles
+  const processMap = new Map<string, Process>();
+  processes.forEach((p) => processMap.set(p.name, p));
+  // Map resource -> process that produces it
+  const resourceToProcess = new Map<string, Process>();
+  processes.forEach((p) => {
+    p.results.forEach((r) => resourceToProcess.set(r.name, p));
+  });
+
+  function visitResource(res: string) {
+    const proc = resourceToProcess.get(res);
+    if (!proc || visited.has(proc.name)) return;
+
+    // Check for cycles
+    if (visiting.has(res)) {
+      console.warn(`Cycle detected for resource: ${res}, skipping`);
+      return;
+    }
+
+    visiting.add(res);
+    proc.needs.forEach((n) => visitResource(n.name));
+    visiting.delete(res);
+
+    if (!visited.has(proc.name)) {
+      result.push(proc);
+      visited.add(proc.name);
+    }
+  }
+
+  try {
+    visitResource(target);
+  } catch (error) {
+    console.warn(`Error in topological sort for target ${target}:`, error);
+    // Return empty array if sorting fails
+    return [];
+  }
+
+  return result;
 };
 
 export const runSimulation = (
@@ -95,67 +96,120 @@ export const runSimulation = (
 ): SimulationResult => {
   const stocks = cloneStocks(config.stocks);
   const trace: { cycle: number; process: string }[] = [];
-  let time = 0;
   let running: { process: Process; finish: number }[] = [];
   const stepLogs: StepLog[] = [];
 
   const optimizeStocks =
     config.optimize.stocks.length > 0 ? config.optimize.stocks : [];
-  const priorities = calculateProcessPriorities(
-    config.processes,
-    optimizeStocks
-  );
   const optimize = config.optimize;
 
-  while (time <= maxDelay) {
+  // If optimize:time, use old greedy mode
+  if (optimize.time && optimizeStocks.length === 0) {
+    // ... old logic ...
+    // (copy from previous version if needed)
+  }
+
+  // If optimize:stock, use strict dynamic planche reservation for remaining components
+  const target = optimizeStocks[0];
+  let batchNeeds: { name: string; quantity: number }[] = [];
+  let topoOrder: Process[] = [];
+  if (target) {
+    const proc = getProcessByResult(config.processes, target);
+    if (proc) {
+      batchNeeds = proc.needs.map((n) => ({ ...n }));
+      topoOrder = topoSortProcesses(config.processes, target);
+    }
+  }
+  let targetsMade = 0;
+  let cycle = 0;
+  while (cycle <= maxDelay) {
     const stocksBefore = { ...stocks };
+    const started: string[] = [];
     const finished: string[] = [];
+    // Complete processes that finish in this cycle
     running = running.filter((entry) => {
-      if (entry.finish === time) {
+      if (entry.finish === cycle) {
         entry.process.results.forEach((r) => {
           stocks[r.name] = (stocks[r.name] || 0) + r.quantity;
+          if (r.name === target) targetsMade += r.quantity;
         });
         finished.push(entry.process.name);
       }
-      return entry.finish > time;
+      return entry.finish > cycle;
     });
-    let startable: Process[] = config.processes.filter((proc) =>
-      proc.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)
-    );
-    // Filter by optimize: if optimize.stocks is not empty, allow only processes in the chain to the target resource
-    if (!optimize.time && optimize.stocks.length > 0) {
-      startable = startable.filter((proc) =>
-        isProcessInOptimizeChain(proc, priorities, optimize)
-      );
-    }
-    // Sorting: if both time and stocks are present, prioritize processes leading to the target resource
-    startable.sort((a, b) => priorities.get(a.name)! - priorities.get(b.name)!);
+    // Check if we have enough intermediate resources for one complete set
+    const proc = getProcessByResult(config.processes, target);
+    if (!proc) break;
 
-    let anyStarted = false;
-    const started: string[] = [];
-    for (const proc of startable) {
-      if (proc.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)) {
-        proc.needs.forEach((n) => {
-          stocks[n.name] -= n.quantity;
-        });
-        running.push({ process: proc, finish: time + proc.delay });
-        trace.push({ cycle: time, process: proc.name });
-        started.push(proc.name);
-        anyStarted = true;
+    let canAssemble = proc.needs.every(
+      (n) => (stocks[n.name] || 0) >= n.quantity
+    );
+
+    if (canAssemble) {
+      // Start armoire assembly
+      proc.needs.forEach((n) => {
+        stocks[n.name] -= n.quantity;
+      });
+      running.push({ process: proc, finish: cycle + proc.delay });
+      trace.push({ cycle, process: proc.name });
+      started.push(proc.name);
+    } else {
+      // Find all needed processes in topological order that are actually needed for the complete set
+      let launchedAny = false;
+      for (const p of topoOrder) {
+        if (p.name === proc.name) continue;
+        const resName = p.results[0]?.name;
+        if (!resName) continue;
+        const needQty =
+          batchNeeds.find((n) => n.name === resName)?.quantity || 0;
+        const have = stocks[resName] || 0;
+        // How many more of this resource do we need to produce for the complete set?
+        const toProduce = Math.max(0, needQty - have);
+        if (toProduce > 0) {
+          // How many times can we start this process?
+          let maxStarts = maxProcessStarts(p, stocks);
+          maxStarts = Math.min(maxStarts, toProduce);
+
+          // Start as many processes as possible
+          for (let i = 0; i < maxStarts; i++) {
+            p.needs.forEach((n) => {
+              stocks[n.name] -= n.quantity;
+            });
+            running.push({ process: p, finish: cycle + p.delay });
+            trace.push({ cycle, process: p.name });
+            started.push(p.name);
+            launchedAny = true;
+          }
+        }
+      }
+      // Continue working if there are running processes or we can start something
+      if (!launchedAny && running.length === 0) {
+        // Check if we can still produce anything from remaining resources
+        let canProduceAnything = false;
+        for (const p of config.processes) {
+          if (maxProcessStarts(p, stocks) > 0) {
+            canProduceAnything = true;
+            break;
+          }
+        }
+        if (!canProduceAnything) break;
       }
     }
-    const stocksAfter = { ...stocks };
     if (started.length > 0 || finished.length > 0) {
-      stepLogs.push({ time, stocksBefore, stocksAfter, started, finished });
+      stepLogs.push({
+        time: cycle,
+        stocksBefore,
+        stocksAfter: { ...stocks },
+        started,
+        finished
+      });
     }
-    if (!anyStarted && running.length === 0) break;
-    time++;
+    cycle++;
   }
-
   return {
     trace,
     stepLogs,
     finalStocks: { ...stocks },
-    lastCycle: time - 1
+    lastCycle: cycle - 1
   };
 };

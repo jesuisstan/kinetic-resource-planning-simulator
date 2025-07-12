@@ -8,6 +8,7 @@
     "start": "node dist/krpsim.js",
     "verif": "node dist/krpsim_verif.js",
     "dev": "ts-node src/krpsim.ts",
+    "test:all": "ts-node src/krpsim.ts resources/ikea 1000 && ts-node src/krpsim.ts resources/inception 1000 && ts-node src/krpsim.ts resources/pomme 1000 && ts-node src/krpsim.ts resources/recre 1000 && ts-node src/krpsim.ts resources/simple 1000 && ts-node src/krpsim.ts resources/steak 1000",
     "clean": "rm -rf dist *.tsbuildinfo",
     "clean:all": "rm -rf dist node_modules *.tsbuildinfo package-lock.json",
     "rebuild": "npm run clean && npm run build",

@@ -65,13 +65,37 @@ export const parseConfigFile = (path: string): ConfigData => {
       continue;
     }
     // process line: <name>:(<need>:<qty>[;<need>:<qty>[...]]):(<result>:<qty>[;<result>:<qty>[...]]):<delay>
-    const match = line.match(/^(\w+):\(([^)]*)\):\(([^)]*)\):(\d+)$/);
-    if (!match) throw new Error(`Invalid process: ${line}`);
-    const [, name, needsStr, resultsStr, delayStr] = match;
+    // Allow empty needs/results: ::
+    const parts = line.split(':');
+    if (parts.length < 4) throw new Error(`Invalid process: ${line}`);
+
+    const name = parts[0];
+    const delayStr = parts[parts.length - 1];
+    const delay = Number(delayStr);
+
+    if (!name || isNaN(delay)) throw new Error(`Invalid process: ${line}`);
+
+    // Extract needs and results from the middle parts
+    let needsStr = '';
+    let resultsStr = '';
+
+    // Find the needs part (between first and second parentheses)
+    let needsStart = line.indexOf('(');
+    let needsEnd = line.indexOf(')', needsStart);
+    if (needsStart !== -1 && needsEnd !== -1) {
+      needsStr = line.substring(needsStart + 1, needsEnd);
+    }
+
+    // Find the results part (between second and third parentheses)
+    let resultsStart = line.indexOf('(', needsEnd + 1);
+    let resultsEnd = line.indexOf(')', resultsStart);
+    if (resultsStart !== -1 && resultsEnd !== -1) {
+      resultsStr = line.substring(resultsStart + 1, resultsEnd);
+    }
+
     const needs = parseNeedsOrResults(needsStr);
     const results = parseNeedsOrResults(resultsStr);
-    const delay = Number(delayStr);
-    if (!name || isNaN(delay)) throw new Error(`Invalid process: ${line}`);
+
     processes.push({ name, needs, results, delay });
   }
   if (!optimize) throw new Error('No optimize line found');
