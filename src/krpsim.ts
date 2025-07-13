@@ -8,7 +8,6 @@
 
 import { parseConfigFile, printConfigSummary, validateConfig } from './parser';
 import { runSimulation } from './simulator';
-import { runBonusSimulation } from './simulator_bonus';
 import { printSimulationResult } from './output';
 
 const printUsage = (): void => {
@@ -18,7 +17,6 @@ const printUsage = (): void => {
 
 export const main = (): void => {
   const args = process.argv.slice(2);
-  const bonus = args.includes('--bonus');
   const filteredArgs = args.filter((arg) => arg !== '--bonus');
   if (filteredArgs.length !== 2) {
     printUsage();
@@ -37,13 +35,9 @@ export const main = (): void => {
     const config = parseConfigFile(configFile);
     validateConfig(config);
     printConfigSummary(config);
-    if (bonus) {
-      // TODO: When runBonusSimulation returns a result, print it here
-      runBonusSimulation(config, maxDelay);
-    } else {
-      const result = runSimulation(config, maxDelay);
-      printSimulationResult(result);
-    }
+
+    const result = runSimulation(config, maxDelay);
+    printSimulationResult(result);
   } catch (err) {
     console.error(
       'Failed to parse or validate config:',

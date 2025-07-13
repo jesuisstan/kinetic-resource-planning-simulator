@@ -14,29 +14,11 @@ This project simulates the execution of production processes with limited resour
 
 - Reads configs with resources and processes
 - Simulates process execution with delays and constraints
-- Supports two algorithm modes: default (optimal) and bonus (exhaustive)
+- Uses a single, optimized algorithm for all scenarios
 - Optimization by time or target resource
 - Generates trace log for verification
 - CLI interface
 - Trace log verifier
-
-## Algorithm Modes
-
-The simulator supports two algorithm modes:
-
-- **Default (optimal, fast):**
-
-  - Implements an efficient algorithm (e.g., dynamic programming or graph search) to find an optimal solution for the given optimization goals (time, resource, or both).
-  - Guaranteed to produce a correct and optimal result for any valid config.
-  - Recommended for most use cases.
-
-- **Bonus (exhaustive, perfect optimization, with `--bonus` flag):**
-  - Uses an exhaustive search or provably perfect optimization algorithm (e.g., full search, branch & bound).
-  - Always finds the best possible result for any valid config, even in the most complex scenarios.
-  - May be significantly slower for large configs, but guarantees the perfect solution.
-  - Intended for validation, research, or when absolute optimality is required.
-
-You can select the algorithm mode by adding the `--bonus` flag to the command line.
 
 ## Project Structure
 
@@ -64,28 +46,20 @@ npm run build
 
 ## Run Simulator
 
-**Default mode (optimal, fast):**
-
 ```sh
 npm start -- <config_file> <max_delay>
-```
-
-**Bonus mode (exhaustive, perfect optimization):**
-
-```sh
-npm start -- <config_file> <max_delay> --bonus
 ```
 
 **For development (TypeScript directly):**
 
 ```sh
-npx ts-node src/krpsim.ts <config_file> <max_delay> [--bonus]
+npx ts-node src/krpsim.ts <config_file> <max_delay>
 ```
 
 **Run directly after build:**
 
 ```sh
-node dist/krpsim.js <config_file> <max_delay> [--bonus]
+node dist/krpsim.js <config_file> <max_delay>
 ```
 
 ## Run Verifier

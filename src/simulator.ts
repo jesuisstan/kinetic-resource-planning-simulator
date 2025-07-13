@@ -89,6 +89,26 @@ const topoSortProcesses = (processes: Process[], target: string): Process[] => {
   return result;
 };
 
+// Helper: get all resources that are on the path to the target (dependency closure)
+const getDependencyClosure = (
+  processes: Process[],
+  target: string
+): Set<string> => {
+  const closure = new Set<string>();
+  const visited = new Set<string>();
+  function visit(res: string) {
+    if (visited.has(res)) return;
+    visited.add(res);
+    closure.add(res);
+    const proc = getProcessByResult(processes, res);
+    if (proc) {
+      proc.needs.forEach((n) => visit(n.name));
+    }
+  }
+  visit(target);
+  return closure;
+};
+
 export const runSimulation = (
   config: ConfigData,
   maxDelay: number,
@@ -103,25 +123,18 @@ export const runSimulation = (
     config.optimize.stocks.length > 0 ? config.optimize.stocks : [];
   const optimize = config.optimize;
 
-  // Determine optimization mode
-  // If we have specific stocks to optimize, prioritize them over time optimization
   let useGreedyMode = optimize.time && optimizeStocks.length === 0;
   let target = optimizeStocks[0];
-  let batchNeeds: { name: string; quantity: number }[] = [];
   let topoOrder: Process[] = [];
+  let dependencyClosure: Set<string> = new Set();
 
   if (target) {
     const proc = getProcessByResult(config.processes, target);
     if (proc) {
-      batchNeeds = proc.needs.map((n) => ({ ...n }));
       topoOrder = topoSortProcesses(config.processes, target);
-      console.log(
-        `Topological order for ${target}:`,
-        topoOrder.map((p) => p.name)
-      );
+      dependencyClosure = getDependencyClosure(config.processes, target);
     }
   }
-  let targetsMade = 0;
   let cycle = 0;
   while (cycle <= maxDelay) {
     const stocksBefore = { ...stocks };
@@ -133,37 +146,46 @@ export const runSimulation = (
       if (entry.finish === cycle) {
         entry.process.results.forEach((r) => {
           stocks[r.name] = (stocks[r.name] || 0) + r.quantity;
-          if (r.name === target) targetsMade += r.quantity;
         });
         finished.push(entry.process.name);
       }
       return entry.finish > cycle;
     });
 
+    let launchedAny = false;
     if (useGreedyMode) {
-      // Greedy mode: start any process that can be started
-      let launchedAny = false;
       for (const proc of config.processes) {
-        const maxStarts = maxProcessStarts(proc, stocks);
-        if (maxStarts > 0) {
-          // Start as many as possible
-          for (let i = 0; i < maxStarts; i++) {
-            proc.needs.forEach((n) => {
-              stocks[n.name] -= n.quantity;
-            });
-            running.push({ process: proc, finish: cycle + proc.delay });
-            trace.push({ cycle, process: proc.name });
-            started.push(proc.name);
-            launchedAny = true;
+        if (
+          optimize.time ||
+          dependencyClosure.size === 0 ||
+          proc.results.some((r) => dependencyClosure.has(r.name))
+        ) {
+          const maxStarts = maxProcessStarts(proc, stocks);
+          if (maxStarts > 0) {
+            for (let i = 0; i < maxStarts; i++) {
+              proc.needs.forEach((n) => {
+                stocks[n.name] -= n.quantity;
+              });
+              running.push({ process: proc, finish: cycle + proc.delay });
+              trace.push({ cycle, process: proc.name });
+              started.push(proc.name);
+              launchedAny = true;
+            }
           }
         }
       }
       if (!launchedAny && running.length === 0) break;
     } else if (target) {
-      // Universal demand-propagation logic for target optimization
-      // 1. Build demandMap: for each resource, how many needed for 1 target
+      // Universal batch+cycle lookahead for target optimization
+      // 1. Build dependency closure for all resources needed for the target
+      // 2. For each resource, compute how many are needed for a full set
+      // 3. Launch processes that produce any resource in the closure if there is a deficit for a full set
+      // 4. For cycles, allow launching if the process can increase any needed resource and there are still base resources
       const demandMap: Record<string, number> = {};
+      const visited = new Set<string>();
       function buildDemand(res: string, qty: number) {
+        if (visited.has(res)) return;
+        visited.add(res);
         demandMap[res] = (demandMap[res] || 0) + qty;
         const proc = getProcessByResult(config.processes, res);
         if (proc) {
@@ -171,18 +193,35 @@ export const runSimulation = (
         }
       }
       buildDemand(target, 1);
-      let launchedAny = false;
+      // For batch: how many full sets of the target can we make with current stocks?
+      const procTarget = getProcessByResult(config.processes, target);
+      let maxFullSets = Infinity;
+      if (procTarget) {
+        for (const n of procTarget.needs) {
+          const have = stocks[n.name] || 0;
+          const possible = Math.floor(have / n.quantity);
+          maxFullSets = Math.min(maxFullSets, possible);
+        }
+      }
+      // For each resource in closure, compute how many are needed for one more full set
+      const neededForFullSet: Record<string, number> = {};
+      if (procTarget) {
+        for (const n of procTarget.needs) {
+          const have = stocks[n.name] || 0;
+          const need = n.quantity * (maxFullSets + 1) - have;
+          if (need > 0) neededForFullSet[n.name] = need;
+        }
+      }
+      // For each process in topoOrder, launch if it produces a resource needed for a full set and we have a deficit
       for (const p of topoOrder) {
         const resName = p.results[0]?.name;
-        if (!resName || !demandMap[resName]) continue;
-        // Сколько уже произведено этого ресурса?
-        const have = stocks[resName] || 0;
-        // Сколько ещё нужно для полного target?
-        const need = demandMap[resName];
-        const toProduce = Math.max(0, need - have);
-        if (toProduce > 0) {
-          let maxStarts = maxProcessStarts(p, stocks);
-          maxStarts = Math.min(maxStarts, toProduce);
+        if (!resName || !dependencyClosure.has(resName)) continue;
+        // If this resource is needed for a full set and we have a deficit, launch
+        if (neededForFullSet[resName]) {
+          let maxStarts = Math.min(
+            maxProcessStarts(p, stocks),
+            neededForFullSet[resName]
+          );
           for (let i = 0; i < maxStarts; i++) {
             p.needs.forEach((n) => {
               stocks[n.name] -= n.quantity;
@@ -192,10 +231,23 @@ export const runSimulation = (
             started.push(p.name);
             launchedAny = true;
           }
+        } else {
+          // For cycles: if process can run and produces a resource in closure, allow if it increases any needed resource
+          let maxStarts = maxProcessStarts(p, stocks);
+          if (maxStarts > 0 && Object.keys(neededForFullSet).length > 0) {
+            for (let i = 0; i < maxStarts; i++) {
+              p.needs.forEach((n) => {
+                stocks[n.name] -= n.quantity;
+              });
+              running.push({ process: p, finish: cycle + p.delay });
+              trace.push({ cycle, process: p.name });
+              started.push(p.name);
+              launchedAny = true;
+            }
+          }
         }
       }
-      // После производства всех компонентов, если хватает для сборки target, запускаем его
-      const procTarget = getProcessByResult(config.processes, target);
+      // Launch the final assembly process if all needs are met
       if (
         procTarget &&
         procTarget.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)
@@ -210,7 +262,6 @@ export const runSimulation = (
       }
       if (!launchedAny && running.length === 0) break;
     } else {
-      // fallback: do nothing
       break;
     }
 
