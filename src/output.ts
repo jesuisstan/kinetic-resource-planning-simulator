@@ -22,6 +22,7 @@ export const printSimulationResult = (result: SimulationResult): void => {
     console.log(`${entry.cycle}:${entry.process}`);
   });
   // Final stocks
+  console.log('----');
   console.log('Stock :');
   Object.entries(result.finalStocks).forEach(([name, qty]) => {
     console.log(`${name} => ${qty}`);
