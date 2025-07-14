@@ -18,12 +18,15 @@ export const printSimulationResult = (result: SimulationResult): void => {
     console.log('----');
   });
   // Trace log
+  console.log('Main walk:');
   result.trace.forEach((entry) => {
     console.log(`${entry.cycle}:${entry.process}`);
   });
+  console.log(`no more process doable at time ${result.lastCycle + 2}`);
+
   // Final stocks
   console.log('----');
-  console.log('Stock :');
+  console.log('Stock:');
   Object.entries(result.finalStocks).forEach(([name, qty]) => {
     console.log(`${name} => ${qty}`);
   });
