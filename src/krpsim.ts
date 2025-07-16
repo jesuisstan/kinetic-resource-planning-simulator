@@ -30,6 +30,7 @@ export const main = (): void => {
     );
     process.exit(1);
   }
+  console.log('------------------------------');
   console.log(`Simulating with config: ${configFile}, max delay: ${maxDelay}`);
   try {
     const config = parseConfigFile(configFile);

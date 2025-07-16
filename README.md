@@ -1,99 +1,179 @@
 # Kinetic Resource Planning Simulator
 
-Simulator for optimizing and analyzing production process chains with resource constraints.
+A TypeScript implementation of a resource planning and optimization system that simulates and optimizes process chains based on resource constraints.
 
 ## Overview
 
-This project simulates the execution of production processes with limited resources and dependencies. It helps analyze and optimize the order and timing of process execution to achieve goals such as minimizing total time or maximizing output.
+The simulator takes a configuration file describing:
 
-- Original implementation in TypeScript 5.8.3
-- No forbidden libraries used
-- Fully compliant with the krpsim project requirements
+- Initial resource stocks
+- Available processes with their inputs, outputs, and delays
+- Optimization goals (time and/or specific resources)
+
+It then produces an optimized execution plan that maximizes the specified goals while respecting resource constraints.
 
 ## Features
 
-- Reads configs with resources and processes
-- Simulates process execution with delays and constraints
-- Uses a single, optimized algorithm for all scenarios
-- Optimization by time or target resource
-- Generates trace log for verification
-- CLI interface
-- Trace log verifier
-
-## Project Structure
-
-- `src/krpsim.ts` — main simulator (CLI)
-- `src/krpsim_verif.ts` — trace log verifier (CLI)
-- `src/` — source code (parser, core, utils)
-- `resources/` — example configs and trace logs
-
-## Requirements
-
-- Node.js 20+
-- TypeScript 5.8.3+
+- Parallel process execution when resources allow
+- Resource dependency tracking and optimization
+- Time and resource optimization
+- Process chain verification
+- Detailed execution logs
 
 ## Installation
 
-```sh
+```bash
+# Install dependencies
 npm install
-```
 
-## Build
-
-```sh
+# Build the project
 npm run build
 ```
 
-## Run Simulator
+## Usage
 
-```sh
+### Running the Simulator
+
+```bash
+# Basic usage
 npm start -- <config_file> <max_delay>
+
+# Example
+npm start -- resources/simple 1000
 ```
 
-**For development (TypeScript directly):**
+### Running the Verifier
 
-```sh
-npx ts-node src/krpsim.ts <config_file> <max_delay>
-```
-
-**Run directly after build:**
-
-```sh
-node dist/krpsim.js <config_file> <max_delay>
-```
-
-## Run Verifier
-
-**Using npm script:**
-
-```sh
+```bash
+# Basic usage
 npm run verif -- <config_file> <trace_file>
+
+# Example
+npm run verif -- resources/simple output.txt
 ```
 
-**For development (TypeScript directly):**
+### Running Tests
 
-```sh
-npx ts-node src/krpsim_verif.ts <config_file> <trace_file>
+```bash
+# Run all test cases
+npm run test:all
+
+# Run simple test cases
+npm run test:simple
 ```
 
-**Run directly after build:**
+## Configuration File Format
 
-```sh
-node dist/krpsim_verif.js <config_file> <trace_file>
+The configuration file uses a simple text format:
+
+```
+# Comments start with #
+
+# Initial stocks
+stock_name:quantity
+
+# Process definitions
+process_name:(need1:qty1;need2:qty2):(result1:qty1;result2:qty2):delay
+
+# Optimization goals
+optimize:(time|stock1;time|stock2;...)
 ```
 
-## Input File Format
+Example:
 
-- Comments: lines starting with `#`
-- Stocks: `<stock_name>:<quantity>`
-- Process: `<name>:(<need>:<qty>[;<need>:<qty>[...]]):(<result>:<qty>[;<result>:<qty>[...]]):<delay>`
-- Optimization: `optimize:(time|<stock_name>[;...])`
+```
+# Initial stock
+euro:10
 
-## Output Format
+# Processes
+equipment_purchase:(euro:8):(equipment:1):10
+product_creation:(equipment:1):(product:1):30
+delivery:(product:1):(happy_client:1):20
 
-- `<cycle>:<process_name>` — process execution
-- Final stocks summary
+# Optimize for time and happy clients
+optimize:(time;happy_client)
+```
+
+## Implementation Details
+
+### Core Components
+
+1. Parser (`src/parser.ts`)
+
+   - Parses configuration files
+   - Validates process definitions and dependencies
+   - Ensures resource consistency
+
+2. Simulator (`src/simulator.ts`)
+
+   - Manages process execution and resource allocation
+   - Implements optimization strategies
+   - Handles parallel process execution
+   - Tracks resource dependencies
+
+3. Output (`src/output.ts`)
+   - Formats simulation results
+   - Generates execution traces
+   - Provides detailed logs
+
+### Optimization Strategy
+
+The simulator uses several strategies to optimize process execution:
+
+1. Resource Allocation
+
+   - Calculates initial resource distribution
+   - Tracks resource dependencies
+   - Prioritizes critical resources
+
+2. Process Scheduling
+
+   - Evaluates process priorities based on:
+     - Direct contribution to optimization goals
+     - Resource scarcity
+     - Process dependencies
+     - Time efficiency
+
+3. Parallel Execution
+   - Identifies independent processes
+   - Maximizes resource utilization
+   - Respects process dependencies
+
+### Verification
+
+The verifier (`krpsim_verif`) ensures that:
+
+- All resource constraints are respected
+- Process dependencies are correctly handled
+- Final resource states are valid
+- Execution trace is consistent
+
+## Examples
+
+1. Simple Chain
+
+   - Linear process execution
+   - Basic resource management
+   - Example: `resources/simple`
+
+2. Parallel Processes
+
+   - Multiple concurrent processes
+   - Resource sharing
+   - Example: `resources/ikea`
+
+3. Complex Dependencies
+   - Multi-step processes
+   - Resource reuse
+   - Example: `resources/steak`
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## License
 
-MIT
+MIT License - see LICENSE file for details

@@ -1,500 +1,525 @@
-import { ConfigData, Stock, Process, OptimizeGoal } from './parser';
+import { ConfigData, Process, Stock } from './parser';
 
+/**
+ * Represents a running process instance in the simulation
+ */
+export interface ProcessInstance {
+  process: Process;
+  startTime: number;
+  endTime: number;
+}
+
+/**
+ * Log entry for each simulation step
+ */
+export interface StepLog {
+  time: number;
+  started: string[]; // Process names that started at this time
+  finished: string[]; // Process names that finished at this time
+  stocksBefore: { [key: string]: number };
+  stocksAfter: { [key: string]: number };
+}
+
+/**
+ * Complete simulation result
+ */
 export interface SimulationResult {
   trace: { cycle: number; process: string }[];
   stepLogs: StepLog[];
-  finalStocks: Record<string, number>;
   lastCycle: number;
+  finalStocks: { [key: string]: number };
 }
 
-interface SimulationOptions {
-  optimize?: boolean;
-}
-
-export interface StepLog {
-  time: number;
-  stocksBefore: Record<string, number>;
-  stocksAfter: Record<string, number>;
-  started: string[];
-  finished: string[];
-}
-
-const cloneStocks = (stocks: Stock[]): Record<string, number> => {
-  const result: Record<string, number> = {};
-  stocks.forEach((s) => {
-    result[s.name] = s.quantity;
-  });
-  return result;
+/**
+ * Helper: get all processes that can produce a given resource
+ */
+const getProducersFor = (processes: Process[], resource: string): Process[] => {
+  return processes.filter((p) => p.results.some((r) => r.name === resource));
 };
 
-// Helper: compute how many times a process can be started with current stocks
-const maxProcessStarts = (
-  proc: Process,
-  stocks: Record<string, number>
-): number => {
-  return Math.min(
-    ...proc.needs.map((n) => Math.floor((stocks[n.name] || 0) / n.quantity))
-  );
-};
-
-// Helper: get process by result resource name
-const getProcessByResult = (
-  processes: Process[],
-  resource: string
-): Process | undefined => {
-  return processes.find((p) => p.results.some((r) => r.name === resource));
-};
-
-// Helper: topological sort of processes for a target resource
-const topoSortProcesses = (processes: Process[], target: string): Process[] => {
-  const result: Process[] = [];
-  const visited = new Set<string>();
-  const visiting = new Set<string>(); // Track resources being visited to detect cycles
-  const processMap = new Map<string, Process>();
-  processes.forEach((p) => processMap.set(p.name, p));
-  // Map resource -> process that produces it
-  const resourceToProcess = new Map<string, Process>();
-  processes.forEach((p) => {
-    p.results.forEach((r) => resourceToProcess.set(r.name, p));
-  });
-
-  function visitResource(res: string) {
-    const proc = resourceToProcess.get(res);
-    if (!proc || visited.has(proc.name)) return;
-
-    // Check for cycles
-    if (visiting.has(res)) {
-      console.warn(`Cycle detected for resource: ${res}, skipping`);
-      return;
-    }
-
-    visiting.add(res);
-    proc.needs.forEach((n) => visitResource(n.name));
-    visiting.delete(res);
-
-    if (!visited.has(proc.name)) {
-      result.push(proc);
-      visited.add(proc.name);
-    }
-  }
-
-  try {
-    visitResource(target);
-  } catch (error) {
-    console.warn(`Error in topological sort for target ${target}:`, error);
-    // Return empty array if sorting fails
-    return [];
-  }
-
-  return result;
-};
-
-// Helper: get all resources that are on the path to the target (dependency closure)
-const getDependencyClosure = (
-  processes: Process[],
-  target: string
-): Set<string> => {
-  const closure = new Set<string>();
-  const visited = new Set<string>();
-  function visit(res: string) {
-    if (visited.has(res)) return;
-    visited.add(res);
-    closure.add(res);
-    const proc = getProcessByResult(processes, res);
-    if (proc) {
-      proc.needs.forEach((n) => visit(n.name));
-    }
-  }
-  visit(target);
-  return closure;
-};
-
-// Helper: recursively find all processes that can contribute to producing a target resource
-const findProductionChain = (
+/**
+ * Helper: get all resources needed to produce a target resource
+ */
+const getRequiredResources = (
   processes: Process[],
   target: string,
   visited: Set<string> = new Set()
-): Process[] => {
-  if (visited.has(target)) return [];
+): Set<string> => {
+  if (visited.has(target)) return new Set();
   visited.add(target);
 
-  const result: Process[] = [];
-  const proc = getProcessByResult(processes, target);
-  if (proc) {
-    result.push(proc);
-    // Recursively find processes needed for this process
-    proc.needs.forEach((n) => {
-      const chain = findProductionChain(processes, n.name, visited);
-      result.push(...chain);
+  const required = new Set<string>();
+  const producers = getProducersFor(processes, target);
+
+  for (const proc of producers) {
+    proc.needs.forEach((need) => {
+      required.add(need.name);
+      const subRequired = getRequiredResources(processes, need.name, visited);
+      subRequired.forEach((r) => required.add(r));
     });
   }
-  return result;
+
+  return required;
 };
 
-// Helper: calculate how many of a resource we can produce with current stocks
-const calculateProducible = (
+/**
+ * Helper: calculate resource requirements for a target
+ */
+const calculateResourceNeeds = (
   processes: Process[],
-  resource: string,
-  stocks: Record<string, number>,
+  target: string,
+  quantity: number = 1,
   visited: Set<string> = new Set()
-): number => {
-  if (visited.has(resource)) return 0; // Prevent infinite recursion
-  visited.add(resource);
+): Map<string, number> => {
+  if (visited.has(target)) return new Map();
+  visited.add(target);
 
-  const proc = getProcessByResult(processes, resource);
-  if (!proc) return stocks[resource] || 0;
+  const needs = new Map<string, number>();
+  const producers = getProducersFor(processes, target);
 
-  // Calculate how many we can produce based on available inputs
-  let maxProducible = Infinity;
-  for (const need of proc.needs) {
-    const available = stocks[need.name] || 0;
-    const producible = calculateProducible(
+  if (producers.length === 0) return needs;
+
+  // Find the most efficient producer
+  const bestProducer = producers.reduce((best, curr) => {
+    const bestOutput =
+      best.results.find((r) => r.name === target)?.quantity || 0;
+    const currOutput =
+      curr.results.find((r) => r.name === target)?.quantity || 0;
+    return currOutput > bestOutput ? curr : best;
+  });
+
+  const outputQty =
+    bestProducer.results.find((r) => r.name === target)?.quantity || 1;
+  const batchesNeeded = Math.ceil(quantity / outputQty);
+
+  // Add direct needs
+  bestProducer.needs.forEach((need) => {
+    needs.set(
+      need.name,
+      (needs.get(need.name) || 0) + need.quantity * batchesNeeded
+    );
+  });
+
+  // Add recursive needs
+  bestProducer.needs.forEach((need) => {
+    const subNeeds = calculateResourceNeeds(
       processes,
       need.name,
-      stocks,
-      new Set(visited)
+      needs.get(need.name) || 0,
+      visited
     );
-    const total = available + producible;
-    const possible = Math.floor(total / need.quantity);
-    maxProducible = Math.min(maxProducible, possible);
-  }
+    subNeeds.forEach((qty, res) => {
+      needs.set(res, (needs.get(res) || 0) + qty);
+    });
+  });
 
-  return maxProducible;
+  return needs;
 };
 
-export const runSimulation = (
-  config: ConfigData,
-  maxDelay: number,
-  options: SimulationOptions = {}
-): SimulationResult => {
-  const stocks = cloneStocks(config.stocks);
-  const trace: { cycle: number; process: string }[] = [];
-  let running: { process: Process; finish: number }[] = [];
-  const stepLogs: StepLog[] = [];
+/**
+ * Calculate initial resource allocation based on optimization targets
+ * This function:
+ * 1. Analyzes resource needs for each target
+ * 2. Calculates maximum possible units of each target
+ * 3. Determines optimal resource distribution
+ * 4. Allocates resources based on process dependencies
+ */
+const calculateInitialAllocation = (
+  processes: Process[],
+  stocks: { [key: string]: number },
+  optimizeTargets: string[]
+): Map<string, number> => {
+  const allocation = new Map<string, number>();
+  const totalResources = { ...stocks };
 
-  const optimizeStocks =
-    config.optimize.stocks.length > 0 ? config.optimize.stocks : [];
-  const optimize = config.optimize;
+  // Calculate resource needs for one unit of each target
+  const targetNeeds = new Map<string, Map<string, number>>();
+  for (const target of optimizeTargets) {
+    targetNeeds.set(target, calculateResourceNeeds(processes, target));
+  }
 
-  let useGreedyMode = optimize.time && optimizeStocks.length === 0;
-  let target = optimizeStocks[0];
-  let topoOrder: Process[] = [];
-  let dependencyClosure: Set<string> = new Set();
+  // Calculate how many units of each target we can make
+  const maxUnits = new Map<string, number>();
+  for (const [target, needs] of targetNeeds.entries()) {
+    let minUnits = Infinity;
+    for (const [resource, needed] of needs.entries()) {
+      const available = totalResources[resource] || 0;
+      const possibleUnits = Math.floor(available / needed);
+      minUnits = Math.min(minUnits, possibleUnits);
+    }
+    maxUnits.set(target, minUnits === Infinity ? 0 : minUnits);
+  }
 
-  if (target) {
-    const proc = getProcessByResult(config.processes, target);
-    if (proc) {
-      topoOrder = topoSortProcesses(config.processes, target);
-      dependencyClosure = getDependencyClosure(config.processes, target);
+  // Calculate optimal resource distribution
+  const resourceDistribution = new Map<string, Map<string, number>>();
+  for (const [target, needs] of targetNeeds.entries()) {
+    const targetDist = new Map<string, number>();
+    const units = maxUnits.get(target) || 0;
+    if (units > 0) {
+      for (const [resource, needed] of needs.entries()) {
+        const total = needed * units;
+        targetDist.set(resource, total);
+      }
+    }
+    resourceDistribution.set(target, targetDist);
+  }
+
+  // Calculate process dependencies and order
+  const processOrder = new Map<string, number>();
+  const visited = new Set<string>();
+
+  function calculateProcessOrder(process: Process, depth: number = 0) {
+    if (visited.has(process.name)) return;
+    visited.add(process.name);
+
+    // Calculate order based on dependencies
+    let maxDependencyDepth = depth;
+    for (const need of process.needs) {
+      const producers = processes.filter((p) =>
+        p.results.some((r) => r.name === need.name)
+      );
+      for (const producer of producers) {
+        if (!visited.has(producer.name)) {
+          calculateProcessOrder(producer, depth + 1);
+        }
+        const producerDepth = processOrder.get(producer.name) || 0;
+        maxDependencyDepth = Math.max(maxDependencyDepth, producerDepth + 1);
+      }
+    }
+    processOrder.set(process.name, maxDependencyDepth);
+  }
+
+  // Calculate process order for each target
+  for (const target of optimizeTargets) {
+    const targetProcess = processes.find((p) =>
+      p.results.some((r) => r.name === target)
+    );
+    if (targetProcess) {
+      calculateProcessOrder(targetProcess);
     }
   }
-  let cycle = 0;
-  while (cycle <= maxDelay) {
-    const stocksBefore = { ...stocks };
-    const started: string[] = [];
-    const finished: string[] = [];
 
-    // Complete processes that finish in this cycle
-    running = running.filter((entry) => {
-      if (entry.finish === cycle) {
-        entry.process.results.forEach((r) => {
-          stocks[r.name] = (stocks[r.name] || 0) + r.quantity;
-        });
-        finished.push(entry.process.name);
+  // Sort processes by dependency order
+  const sortedProcesses = [...processes].sort((a, b) => {
+    const orderA = processOrder.get(a.name) || 0;
+    const orderB = processOrder.get(b.name) || 0;
+    return orderA - orderB;
+  });
+
+  // Allocate resources for each process in order
+  for (const process of sortedProcesses) {
+    // Check if this process produces any needed resources
+    const producesNeeded = process.results.some((result) => {
+      for (const [target, dist] of resourceDistribution.entries()) {
+        if (dist.has(result.name)) return true;
       }
-      return entry.finish > cycle;
+      return false;
     });
 
-    let launchedAny = false;
-    if (useGreedyMode) {
-      // Greedy mode: start any process that can be started
-      for (const proc of config.processes) {
-        const maxStarts = maxProcessStarts(proc, stocks);
-        if (maxStarts > 0) {
-          for (let i = 0; i < maxStarts; i++) {
-            proc.needs.forEach((n) => {
-              stocks[n.name] -= n.quantity;
-            });
-            running.push({ process: proc, finish: cycle + proc.delay });
-            trace.push({ cycle, process: proc.name });
-            started.push(proc.name);
-            launchedAny = true;
-          }
-        }
-      }
-      if (!launchedAny && running.length === 0) break;
-    } else if (target) {
-      // Universal recursive lookahead for all scenarios
-      const procTarget = getProcessByResult(config.processes, target);
-      if (!procTarget) break;
-
-      // Calculate current deficit for target
-      const targetDeficit: Record<string, number> = {};
-      let canMakeTarget = true;
-      for (const need of procTarget.needs) {
-        const have = stocks[need.name] || 0;
-        if (have < need.quantity) {
-          targetDeficit[need.name] = need.quantity - have;
-          canMakeTarget = false;
-        }
+    if (producesNeeded) {
+      // Calculate how many times we can run this process
+      let maxRuns = Infinity;
+      for (const need of process.needs) {
+        const available = totalResources[need.name] || 0;
+        const runs = Math.floor(available / need.quantity);
+        maxRuns = Math.min(maxRuns, runs);
       }
 
-      // If we can make target, launch it
-      if (canMakeTarget) {
-        procTarget.needs.forEach((n) => {
-          stocks[n.name] -= n.quantity;
-        });
-        running.push({ process: procTarget, finish: cycle + procTarget.delay });
-        trace.push({ cycle, process: procTarget.name });
-        started.push(procTarget.name);
-        launchedAny = true;
-      } else {
-        // Find processes that can help reduce deficit
-        const usefulProcesses: { process: Process; priority: number }[] = [];
-
-        for (const proc of config.processes) {
-          let priority = 0;
-          let canHelp = false;
-
-          // Check if this process produces something we need for the target
-          for (const result of proc.results) {
-            if (targetDeficit[result.name]) {
-              priority += targetDeficit[result.name] * 10; // High priority for direct needs
-              canHelp = true;
-            } else if (
-              procTarget &&
-              procTarget.needs.some((n) => n.name === result.name)
-            ) {
-              priority += 5; // Medium priority for target needs
-              canHelp = true;
-            } else if (dependencyClosure.has(result.name)) {
-              priority += 1; // Lower priority for indirect needs
-              canHelp = true;
-            }
-          }
-
-          // For economic models (euro optimization), prioritize processes that generate euro
-          if (
-            target === 'euro' &&
-            proc.results.some((r) => r.name === 'euro')
-          ) {
-            priority += 10000; // Very high priority for euro-producing processes
-            canHelp = true;
-          }
-
-          // Also prioritize processes that produce ingredients for euro-generating processes
-          if (target === 'euro') {
-            // Check if this process produces something needed for euro-generating processes
-            const euroProcesses = config.processes.filter((p) =>
-              p.results.some((r) => r.name === 'euro')
-            );
-
-            for (const euroProc of euroProcesses) {
-              for (const need of euroProc.needs) {
-                if (proc.results.some((r) => r.name === need.name)) {
-                  priority += 1000; // High priority for ingredients of euro processes
-                  canHelp = true;
-                  break;
-                }
-              }
-            }
-
-            // Give lower priority to simple processing steps that don't lead to euro
-            if (
-              proc.name === 'separation_oeuf' ||
-              proc.name === 'reunion_oeuf'
-            ) {
-              priority -= 500; // Lower priority for egg processing
-            }
-          }
-
-          // Check if this process can run
-          const maxStarts = maxProcessStarts(proc, stocks);
-          if (canHelp && maxStarts > 0) {
-            usefulProcesses.push({ process: proc, priority });
-          }
-        }
-
-        // Launch ALL useful processes that can run (not just the highest priority one)
-        // This ensures batch production works correctly
-        // First, calculate how many of each process we can start with available resources
-        const processAllocations: {
-          process: Process;
-          maxPossible: number;
-          allocated: number;
-        }[] = [];
-
-        for (const { process: proc } of usefulProcesses) {
-          const maxPossible = maxProcessStarts(proc, stocks);
-          processAllocations.push({ process: proc, maxPossible, allocated: 0 });
-        }
-
-        // For economic models (euro target), be more conservative about spending euro
-        if (target === 'euro') {
-          // Sort processes by priority (euro-producing processes first)
-          usefulProcesses.sort((a, b) => b.priority - a.priority);
-
-          // Calculate how much euro we have and need to reserve
-          const currentEuro = stocks.euro || 0;
-
-          // Check if we have enough raw materials to start production
-          const hasEnoughRawMaterials =
-            (stocks.pomme || 0) >= 100 &&
-            (stocks.citron || 0) >= 100 &&
-            (stocks.oeuf || 0) >= 50 &&
-            (stocks.farine || 0) >= 500 &&
-            (stocks.beurre || 0) >= 100 &&
-            (stocks.lait || 0) >= 100;
-
-          // If we have enough raw materials, stop buying and focus on production
-          if (hasEnoughRawMaterials) {
-            // Only launch non-euro-consuming processes
-            for (const { process: proc } of usefulProcesses) {
-              const isEuroConsumer = proc.needs.some((n) => n.name === 'euro');
-              if (!isEuroConsumer) {
-                const maxStarts = maxProcessStarts(proc, stocks);
-                if (maxStarts > 0) {
-                  for (let i = 0; i < maxStarts; i++) {
-                    proc.needs.forEach((n) => {
-                      stocks[n.name] -= n.quantity;
-                    });
-                    running.push({ process: proc, finish: cycle + proc.delay });
-                    trace.push({ cycle, process: proc.name });
-                    started.push(proc.name);
-                    launchedAny = true;
-                  }
-                }
-              }
-            }
-          } else {
-            // Still need raw materials, be conservative about spending euro
-            const reserveEuro = Math.max(1000, currentEuro * 0.3); // Reserve at least 1000 or 30%
-            const spendableEuro = currentEuro - reserveEuro;
-
-            // Launch processes one by one, prioritizing euro-producing ones
-            for (const { process: proc } of usefulProcesses) {
-              const maxStarts = maxProcessStarts(proc, stocks);
-              if (maxStarts > 0) {
-                // For euro-consuming processes, be very conservative
-                const isEuroConsumer = proc.needs.some(
-                  (n) => n.name === 'euro'
-                );
-                let maxAllowed = maxStarts;
-
-                if (isEuroConsumer) {
-                  const euroNeeded =
-                    proc.needs.find((n) => n.name === 'euro')?.quantity || 0;
-                  const maxEuroStarts = Math.floor(spendableEuro / euroNeeded);
-                  maxAllowed = Math.min(maxStarts, maxEuroStarts, 2); // Limit to 2 at most
-                }
-
-                for (let i = 0; i < maxAllowed; i++) {
-                  proc.needs.forEach((n) => {
-                    stocks[n.name] -= n.quantity;
-                  });
-                  running.push({ process: proc, finish: cycle + proc.delay });
-                  trace.push({ cycle, process: proc.name });
-                  started.push(proc.name);
-                  launchedAny = true;
-                }
-              }
-            }
-          }
-        } else {
-          // Original logic for non-economic models
-          // Distribute resources among processes to ensure all get some if possible
-          let resourcesRemaining = true;
-          while (resourcesRemaining) {
-            resourcesRemaining = false;
-            for (const allocation of processAllocations) {
-              if (allocation.allocated < allocation.maxPossible) {
-                const canStart = maxProcessStarts(allocation.process, stocks);
-                if (canStart > 0) {
-                  // Check if we still need this resource for the target
-                  const resName = allocation.process.results[0]?.name;
-                  const currentDeficit = targetDeficit[resName] || 0;
-                  if (currentDeficit > 0) {
-                    allocation.process.needs.forEach((n) => {
-                      stocks[n.name] -= n.quantity;
-                    });
-                    running.push({
-                      process: allocation.process,
-                      finish: cycle + allocation.process.delay
-                    });
-                    trace.push({ cycle, process: allocation.process.name });
-                    started.push(allocation.process.name);
-                    launchedAny = true;
-                    allocation.allocated++;
-                    // Update the deficit to reflect this process being launched
-                    targetDeficit[resName] = Math.max(
-                      0,
-                      currentDeficit - allocation.process.results[0].quantity
-                    );
-                    resourcesRemaining = true;
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // If no processes were launched but we have useful processes, try launching them one by one
-        // This handles cases where one process consumes all resources
-        if (!launchedAny && usefulProcesses.length > 0) {
-          for (const { process: proc } of usefulProcesses) {
-            const maxStarts = maxProcessStarts(proc, stocks);
-            if (maxStarts > 0) {
-              for (let i = 0; i < maxStarts; i++) {
-                proc.needs.forEach((n) => {
-                  stocks[n.name] -= n.quantity;
-                });
-                running.push({ process: proc, finish: cycle + proc.delay });
-                trace.push({ cycle, process: proc.name });
-                started.push(proc.name);
-                launchedAny = true;
-              }
-            }
-          }
+      if (maxRuns > 0 && maxRuns !== Infinity) {
+        // Allocate resources for this process
+        for (const need of process.needs) {
+          const total = need.quantity * maxRuns;
+          allocation.set(need.name, (allocation.get(need.name) || 0) + total);
         }
       }
-
-      // Check if we can now assemble the target
-      if (
-        procTarget &&
-        procTarget.needs.every((n) => (stocks[n.name] || 0) >= n.quantity)
-      ) {
-        procTarget.needs.forEach((n) => {
-          stocks[n.name] -= n.quantity;
-        });
-        running.push({ process: procTarget, finish: cycle + procTarget.delay });
-        trace.push({ cycle, process: procTarget.name });
-        started.push(procTarget.name);
-        launchedAny = true;
-      }
-
-      // Only break if no processes were launched AND no processes are running
-      if (!launchedAny && running.length === 0) {
-        break; // No progress possible
-      }
-    } else {
-      break;
     }
-
-    if (started.length > 0 || finished.length > 0) {
-      stepLogs.push({
-        time: cycle,
-        stocksBefore,
-        stocksAfter: { ...stocks },
-        started,
-        finished
-      });
-    }
-    cycle++;
   }
-  return {
-    trace,
-    stepLogs,
-    finalStocks: { ...stocks },
-    lastCycle: cycle - 1
+
+  return allocation;
+};
+
+/**
+ * Evaluate process priority based on optimization goals
+ * Considers:
+ * 1. Direct contribution to targets
+ * 2. Resource dependencies
+ * 3. Resource scarcity
+ * 4. Process efficiency
+ */
+const evaluateProcessPriority = (
+  process: Process,
+  stocks: { [key: string]: number },
+  optimizeTargets: string[],
+  processes: Process[],
+  allocation: Map<string, number>
+): number => {
+  let priority = 0;
+
+  // Direct contribution to optimize targets
+  for (const result of process.results) {
+    if (optimizeTargets.includes(result.name)) {
+      priority += 1000 * result.quantity;
+    }
+  }
+
+  // Calculate how many of each resource we need for one target unit
+  const targetProducers = optimizeTargets
+    .map((target) => ({
+      target,
+      process: processes.find((p) => p.results.some((r) => r.name === target))
+    }))
+    .filter((x) => x.process);
+
+  for (const { target, process } of targetProducers) {
+    if (!process) continue;
+
+    // Check if this process produces any needed resources
+    const neededResources = process.needs.map((n) => n.name);
+    const producesNeeded = process.results.some((r) =>
+      neededResources.includes(r.name)
+    );
+
+    if (producesNeeded) {
+      // This process produces resources needed for the target
+      const missingResources = process.needs.filter(
+        (n) => (stocks[n.name] || 0) < n.quantity
+      );
+      if (missingResources.length > 0) {
+        // Prioritize processes that produce missing resources
+        for (const result of process.results) {
+          if (missingResources.some((n) => n.name === result.name)) {
+            priority += 800 * result.quantity;
+          }
+        }
+      }
+    }
+  }
+
+  // Check if this process produces resources that are allocated
+  for (const result of process.results) {
+    const allocated = allocation.get(result.name) || 0;
+    if (allocated > 0) {
+      const have = stocks[result.name] || 0;
+      if (have < allocated) {
+        // Higher priority for allocated resources we don't have enough of
+        priority +=
+          700 * result.quantity * (1 + (allocated - have) / allocated);
+      }
+    }
+  }
+
+  // Resource efficiency - prefer processes that use abundant resources
+  const resourceEfficiency = process.needs.reduce((acc, need) => {
+    const available = stocks[need.name] || 0;
+    const allocated = allocation.get(need.name) || 0;
+    if (allocated > 0 && available < allocated) {
+      // Penalize using scarce resources that are needed for targets
+      return acc - (100 * (allocated - available)) / allocated;
+    }
+    return acc + 50;
+  }, 0);
+  priority += resourceEfficiency;
+
+  // Time efficiency - shorter processes get higher priority
+  priority += 100 / (process.delay + 1);
+
+  return priority;
+};
+
+/**
+ * Check if a process can be started with current stocks
+ */
+const canStartProcess = (
+  process: Process,
+  stocks: { [key: string]: number }
+): boolean => {
+  return process.needs.every((need) => stocks[need.name] >= need.quantity);
+};
+
+/**
+ * Apply process needs/results to stocks
+ */
+const applyProcess = (
+  process: Process,
+  stocks: { [key: string]: number },
+  isStart: boolean
+): void => {
+  const items = isStart ? process.needs : process.results;
+  const operation = isStart
+    ? (a: number, b: number) => a - b
+    : (a: number, b: number) => a + b;
+
+  items.forEach((item) => {
+    stocks[item.name] = operation(stocks[item.name] || 0, item.quantity);
+  });
+};
+
+/**
+ * Main simulation function
+ *
+ * Algorithm:
+ * 1. Initialize simulation state
+ * 2. Calculate resource allocation
+ * 3. For each time step:
+ *    a. Complete finished processes
+ *    b. Try to start new processes in parallel
+ *    c. Update resource states
+ *    d. Check if we can continue
+ * 4. Return simulation results
+ */
+export const runSimulation = (
+  config: ConfigData,
+  maxDelay: number
+): SimulationResult => {
+  // Initialize result structure
+  const result: SimulationResult = {
+    trace: [],
+    stepLogs: [],
+    lastCycle: 0,
+    finalStocks: {}
   };
+
+  // Initialize stocks
+  const stocks: { [key: string]: number } = {};
+  config.stocks.forEach((stock) => {
+    stocks[stock.name] = stock.quantity;
+  });
+
+  // Get optimization targets
+  const optimizeTargets = [...config.optimize.stocks];
+  if (config.optimize.time) {
+    // For time optimization, we want to complete all processes as quickly as possible
+    config.processes.forEach((p) => {
+      p.results.forEach((r) => {
+        if (!optimizeTargets.includes(r.name)) {
+          optimizeTargets.push(r.name);
+        }
+      });
+    });
+  }
+
+  // Calculate initial resource allocation
+  const allocation = calculateInitialAllocation(
+    config.processes,
+    stocks,
+    optimizeTargets
+  );
+
+  // Calculate process dependencies
+  const processDependencies = new Map<string, Set<string>>();
+  for (const process of config.processes) {
+    const dependencies = new Set<string>();
+    for (const need of process.needs) {
+      // Find processes that produce this need
+      const producers = config.processes.filter((p) =>
+        p.results.some((r) => r.name === need.name)
+      );
+      producers.forEach((p) => dependencies.add(p.name));
+    }
+    processDependencies.set(process.name, dependencies);
+  }
+
+  // Track running processes
+  const runningProcesses: ProcessInstance[] = [];
+  let currentTime = 0;
+
+  while (currentTime <= maxDelay) {
+    const stepLog: StepLog = {
+      time: currentTime,
+      started: [],
+      finished: [],
+      stocksBefore: { ...stocks },
+      stocksAfter: {}
+    };
+
+    // Check finished processes
+    const stillRunning: ProcessInstance[] = [];
+    for (const instance of runningProcesses) {
+      if (instance.endTime === currentTime) {
+        // Process finished, apply results
+        applyProcess(instance.process, stocks, false);
+        stepLog.finished.push(instance.process.name);
+        result.trace.push({
+          cycle: currentTime,
+          process: instance.process.name
+        });
+      } else {
+        stillRunning.push(instance);
+      }
+    }
+    runningProcesses.length = 0;
+    runningProcesses.push(...stillRunning);
+
+    // Try to start new processes
+    let processStarted = false;
+    do {
+      processStarted = false;
+
+      // Create a temporary stock state to simulate parallel process starts
+      const tempStocks = { ...stocks };
+
+      // Get all eligible processes and sort by priority
+      const eligible = config.processes
+        .filter((p) => canStartProcess(p, tempStocks))
+        .map((p) => ({
+          process: p,
+          priority: evaluateProcessPriority(
+            p,
+            tempStocks,
+            optimizeTargets,
+            config.processes,
+            allocation
+          )
+        }))
+        .sort((a, b) => b.priority - a.priority);
+
+      // Try to start multiple processes in parallel
+      const toStart: Process[] = [];
+      for (const { process } of eligible) {
+        // Check if we can start this process with remaining resources
+        if (canStartProcess(process, tempStocks)) {
+          // Check if any dependencies are currently running
+          const deps = processDependencies.get(process.name) || new Set();
+          const hasRunningDeps = runningProcesses.some((rp) =>
+            deps.has(rp.process.name)
+          );
+
+          if (!hasRunningDeps) {
+            // Simulate resource consumption
+            applyProcess(process, tempStocks, true);
+            toStart.push(process);
+          }
+        }
+      }
+
+      // Actually start the processes
+      if (toStart.length > 0) {
+        for (const process of toStart) {
+          applyProcess(process, stocks, true);
+          runningProcesses.push({
+            process,
+            startTime: currentTime,
+            endTime: currentTime + process.delay
+          });
+          stepLog.started.push(process.name);
+        }
+        processStarted = true;
+      }
+    } while (processStarted);
+
+    stepLog.stocksAfter = { ...stocks };
+    result.stepLogs.push(stepLog);
+
+    // Check if we can continue
+    if (runningProcesses.length === 0 && !processStarted) {
+      break; // No more processes can run
+    }
+
+    currentTime++;
+  }
+
+  result.lastCycle = currentTime;
+  result.finalStocks = { ...stocks };
+
+  return result;
 };
