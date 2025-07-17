@@ -58,15 +58,13 @@ function main() {
   const logsFile = process.argv[3];
 
   try {
-    const parser = new Parser(configFile);
-    const config = parser.parse();
+    const parser = new Parser();
+    const config = parser.parse(configFile);
     const trace = fs.readFileSync(logsFile, 'utf8').trim().split('\n');
 
     verifyTrace(config, trace);
   } catch (error) {
-    console.error(
-      error instanceof Error ? error.message : 'An error occurred'
-    );
+    console.error(error instanceof Error ? error.message : 'An error occurred');
     process.exit(1);
   }
 }

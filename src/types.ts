@@ -1,31 +1,45 @@
-export interface Stock {
-  name: string;
-  quantity: number;
-}
+export type Stock = {
+  readonly name: string;
+  readonly quantity: number;
+};
 
-export interface Process {
-  name: string;
-  inputs: Map<string, number>;
-  outputs: Map<string, number>;
-  nbCycle: number;
-}
+export type Process = {
+  readonly name: string;
+  readonly inputs: ReadonlyMap<string, number>;
+  readonly outputs: ReadonlyMap<string, number>;
+  readonly nbCycle: number;
+};
 
-export interface Config {
-  stocks: Map<string, number>;
-  processes: Map<string, Process>;
-  optimizeGoals: string[];
-}
+export type Config = {
+  readonly processes: readonly Process[];
+  readonly stocks: readonly Stock[];
+  readonly optimizeGoals: readonly string[];
+};
 
-export interface Individual {
-  genes: Array<{
-    process: string;
-    amount: number;
-    parallel: boolean;
-  }>;
-  fitness: number;
-}
+export type Individual = {
+  readonly processSequence: readonly string[];
+  fitnessScore: number; // Not readonly since we need to update this
+};
 
-export interface ResourceDiff {
-  consumed: Map<string, number>;
-  produced: Map<string, number>;
-}
+export type SimulationResult = {
+  readonly finalStocks: ReadonlyMap<string, number>;
+  readonly executionLog: ReadonlyArray<[number, string]>;
+  readonly finalCycle: number;
+  readonly fitness: number;
+  readonly timeoutReached: boolean;
+};
+
+export type RunningProcess = {
+  readonly processPtr: Process;
+  readonly completionTime: number;
+};
+
+export type MT19937State = {
+  mt: number[]; // Not readonly since we need to update this
+  mti: number; // Not readonly since we need to update this
+};
+
+// Pure functions for state management
+export type StockState = Map<string, number>;
+export type ProcessState = ReadonlyMap<string, Process>;
+export type PriorityState = ReadonlyMap<string, number>;

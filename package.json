@@ -10,7 +10,8 @@
     "rebuild": "rm -rf node_modules/ package-lock.json && npm run clean && npm install && npm run build",
     "krpsim": "node dist/krpsim.js",
     "verify": "node dist/krpsim_verif.js",
-    "dev": "ts-node src/krpsim.ts"
+    "dev": "ts-node src/krpsim.ts",
+    "test:simple": "npm run build && npm run krpsim -- resources/simple 1000 && npm run krpsim -- resources/ikea 1000 && npm run krpsim -- resources/steak 1000"
   },
   "keywords": [
     "krpsim",

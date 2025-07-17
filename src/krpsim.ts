@@ -1,212 +1,250 @@
-import { Parser } from './parser';
-import { GeneticAlgorithm } from './geneticAlgorithm';
+import { Config, Process, Stock } from './types';
+import { evolvePopulation } from './geneticAlgorithm';
+import { runSimulation } from './simulator';
 import * as fs from 'fs';
-import { Config, Individual } from './types';
+import * as path from 'path';
 
-function formatSolution(individual: Individual, config: Config): string[] {
-  const result: string[] = [];
-  const stocks = new Map(config.stocks);
-  const processEndTimes = new Map<string, number>();
-  const resourceAvailableTimes = new Map<string, number>();
+function calculateMaxSequenceLength(config: Config, timeLimit: number): number {
+  const processes = config.processes;
+  const stocks = config.stocks;
 
-  // Initialize resource available times with initial stocks
-  for (const [resource] of stocks) {
-    resourceAvailableTimes.set(resource, 0);
+  if (processes.length === 0) {
+    return 100;
   }
 
-  // First pass: calculate earliest possible start times based on dependencies
-  const processStartTimes = new Map<string, number>();
-  for (const gene of individual.genes) {
-    const process = config.processes.get(gene.process);
-    if (!process) continue;
-
-    let earliestStart = 0;
-
-    // Check when all required resources will be available
-    for (const [resource] of process.inputs) {
-      const resourceTime = resourceAvailableTimes.get(resource) || 0;
-      earliestStart = Math.max(earliestStart, resourceTime);
-    }
-
-    processStartTimes.set(gene.process, earliestStart);
+  let avgCycle = 0;
+  for (const process of processes) {
+    avgCycle += process.nbCycle;
   }
+  avgCycle /= processes.length;
 
-  // Sort genes by start time and dependencies
-  const sortedGenes = [...individual.genes].sort((a, b) => {
-    const startA = processStartTimes.get(a.process) || 0;
-    const startB = processStartTimes.get(b.process) || 0;
-    if (startA !== startB) return startA - startB;
+  const estimatedProcesses = Math.floor(timeLimit / Math.max(1, avgCycle));
+  const complexityFactor = 2.0 + stocks.length * 0.1 + processes.length * 0.2;
+  const maxLength = Math.floor(estimatedProcesses * complexityFactor);
 
-    // If start times are equal, prioritize processes that produce resources needed by others
-    const procA = config.processes.get(a.process);
-    const procB = config.processes.get(b.process);
-    if (!procA || !procB) return 0;
+  const minValue = Math.max(100, estimatedProcesses);
+  const maxValue = Math.min(20000, estimatedProcesses * 10);
 
-    let scoreA = 0;
-    let scoreB = 0;
+  return Math.max(minValue, Math.min(maxValue, maxLength));
+}
 
-    // Calculate how many other processes need the outputs of this process
-    for (const [resource] of procA.outputs) {
-      for (const [_, otherProc] of config.processes) {
-        if (otherProc !== procA && otherProc.inputs.has(resource)) {
-          scoreA++;
+function parseFile(filePath: string): Config | null {
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split('\n').map((line) => line.trim());
+
+    const stocks: Stock[] = [];
+    const processes: Process[] = [];
+    const optimizeGoals: string[] = [];
+
+    let currentSection = '';
+
+    for (const line of lines) {
+      // Skip empty lines and comments
+      if (line === '' || line.startsWith('#')) {
+        continue;
+      }
+
+      // Parse stock line
+      if (line.includes(':') && !line.includes('(')) {
+        const [name, quantity] = line.split(':').map((s) => s.trim());
+        if (!isNaN(parseInt(quantity))) {
+          stocks.push({ name, quantity: parseInt(quantity) });
         }
+        continue;
       }
-    }
 
-    for (const [resource] of procB.outputs) {
-      for (const [_, otherProc] of config.processes) {
-        if (otherProc !== procB && otherProc.inputs.has(resource)) {
-          scoreB++;
+      // Parse process line
+      const processMatch = line.match(/(\w+):\((.*?)\):\((.*?)\):(\d+)/);
+      if (processMatch) {
+        const [_, name, inputStr, outputStr, delay] = processMatch;
+
+        // Parse inputs
+        const inputs = new Map<string, number>();
+        if (inputStr.trim()) {
+          for (const input of inputStr.split(';')) {
+            const [resource, quantity] = input.split(':').map((s) => s.trim());
+            inputs.set(resource, parseInt(quantity));
+          }
         }
+
+        // Parse outputs
+        const outputs = new Map<string, number>();
+        if (outputStr.trim()) {
+          for (const output of outputStr.split(';')) {
+            const [resource, quantity] = output.split(':').map((s) => s.trim());
+            outputs.set(resource, parseInt(quantity));
+          }
+        }
+
+        processes.push({
+          name,
+          inputs,
+          outputs,
+          nbCycle: parseInt(delay)
+        });
+        continue;
+      }
+
+      // Parse optimize line
+      const optimizeMatch = line.match(/optimize:\((.*?)\)/);
+      if (optimizeMatch) {
+        const goals = optimizeMatch[1].split(';').map((g) => g.trim());
+        optimizeGoals.push(...goals);
       }
     }
 
-    return scoreB - scoreA;
-  });
-
-  // Execute processes
-  for (const gene of sortedGenes) {
-    const process = config.processes.get(gene.process);
-    if (!process) continue;
-
-    // Check if we have enough resources
-    let canRun = true;
-    for (const [resource, needed] of process.inputs) {
-      const available = stocks.get(resource) || 0;
-      if (available < needed * gene.amount) {
-        canRun = false;
-        break;
-      }
-    }
-    if (!canRun) continue;
-
-    // Get start time based on resource availability
-    let startTime = 0;
-    for (const [resource] of process.inputs) {
-      startTime = Math.max(
-        startTime,
-        resourceAvailableTimes.get(resource) || 0
-      );
+    if (
+      stocks.length === 0 &&
+      processes.length === 0 &&
+      optimizeGoals.length === 0
+    ) {
+      console.error('Error: No valid data found in file');
+      return null;
     }
 
-    // Consume resources
-    for (const [resource, amount] of process.inputs) {
-      const current = stocks.get(resource) || 0;
-      stocks.set(resource, current - amount * gene.amount);
-    }
-
-    // Add process executions
-    for (let i = 0; i < gene.amount; i++) {
-      result.push(`${startTime}:${gene.process}`);
-    }
-
-    // Calculate when resources will be available
-    const endTime = startTime + process.nbCycle;
-    for (const [resource, amount] of process.outputs) {
-      const current = stocks.get(resource) || 0;
-      stocks.set(resource, current + amount * gene.amount);
-      resourceAvailableTimes.set(resource, endTime);
-    }
-
-    // Update process end time
-    processEndTimes.set(gene.process, endTime);
+    return { stocks, processes, optimizeGoals };
+  } catch (error) {
+    console.error('Error parsing file:', error);
+    return null;
   }
-
-  // Sort result by time
-  result.sort((a, b) => {
-    const timeA = parseInt(a.split(':')[0]);
-    const timeB = parseInt(b.split(':')[0]);
-    return timeA - timeB;
-  });
-
-  return result;
 }
 
 function main() {
   if (process.argv.length < 4) {
-    console.error('Usage: npm start -- <filename> <delay>');
+    console.error('Usage: npm run krpsim -- <filename> <delay>');
     process.exit(1);
   }
 
-  const filename = process.argv[2];
-  const delay = parseInt(process.argv[3], 10);
+  const filePath = process.argv[2];
+  const timeLimit = parseInt(process.argv[3]);
 
-  if (isNaN(delay) || delay <= 0) {
+  if (isNaN(timeLimit) || timeLimit <= 0) {
     console.error('Error: Delay must be a positive integer.');
     process.exit(1);
   }
 
+  const config = parseFile(filePath);
+  if (!config) {
+    process.exit(1);
+  }
+
+  console.log('------------------------------------------');
+  console.log(
+    `Nice file! ${config.processes.length} processes, ${config.stocks.length} initial stocks, ${config.optimizeGoals.length} optimization goal(s)`
+  );
+  console.log('------------------------------------------');
+  console.log('Evaluating using Genetic Algorithm...');
+
+  // Adjust parameters based on problem complexity
+  const processCount = config.processes.length;
+  const stockCount = config.stocks.length;
+  const isComplex = processCount > 10 || stockCount > 5;
+  const isVeryComplex = processCount > 15 || stockCount > 10;
+
+  // Base parameters
+  let generations = 100;
+  let populationSize = 100;
+  let mutationRate = 0.05;
+  let crossoverRate = 0.7;
+  let eliteCount = 4;
+  let minSequenceLength = 10;
+
+  // Adjust for complexity
+  if (isComplex) {
+    generations += 100;
+    populationSize += 50;
+    eliteCount += 2;
+  }
+  if (isVeryComplex) {
+    generations += 100;
+    populationSize += 50;
+    eliteCount += 2;
+    mutationRate = 0.1; // Increase mutation for better exploration
+  }
+
+  const maxSequenceLength = calculateMaxSequenceLength(config, timeLimit);
+
+  console.log(
+    `Starting genetic algorithm evolution for ${generations} generations...`
+  );
+  console.log(
+    `Population initialized with ${populationSize} individuals: ${Math.floor(
+      populationSize * 0.8
+    )} smart, ${Math.floor(populationSize * 0.2)} random.`
+  );
+
+  const bestIndividual = evolvePopulation(
+    config,
+    timeLimit,
+    generations,
+    populationSize,
+    mutationRate,
+    crossoverRate,
+    eliteCount,
+    minSequenceLength,
+    maxSequenceLength
+  );
+
+  const result = runSimulation(
+    config,
+    bestIndividual.processSequence,
+    timeLimit
+  );
+
+  console.log('------------------------------------------');
+  console.log(`Final Fitness Score: ${result.fitness.toFixed(3)}`);
+  console.log('------------------------------------------');
+  console.log('Main walk :');
+  if (result.executionLog.length === 0) {
+    console.log('(No processes executed)');
+  } else {
+    for (const [cycle, processName] of result.executionLog) {
+      console.log(`${cycle}:${processName}`);
+    }
+  }
+  console.log('------------------------------------------');
+
+  if (result.executionLog.length === 0) {
+    console.log(
+      `No process could be executed within the time limit (${timeLimit}).`
+    );
+  } else if (!result.timeoutReached && result.finalCycle < timeLimit) {
+    console.log(`No more process doable at time ${result.finalCycle}`);
+  } else {
+    console.log(`Simulation reached time limit at cycle ${timeLimit}.`);
+  }
+
+  console.log('Stocks :');
+  const allStockNames = new Set<string>();
+  for (const stock of config.stocks) {
+    allStockNames.add(stock.name);
+  }
+  for (const process of config.processes) {
+    for (const [resource] of process.inputs) {
+      allStockNames.add(resource);
+    }
+    for (const [resource] of process.outputs) {
+      allStockNames.add(resource);
+    }
+  }
+
+  for (const stockName of Array.from(allStockNames).sort()) {
+    console.log(`  ${stockName} => ${result.finalStocks.get(stockName) || 0}`);
+  }
+  console.log('------------------------------------------');
+
+  // Write to tracefile
+  const tracefilePath = process.env.KRPSIM_TRACEFILE || 'logs.txt';
   try {
-    const parser = new Parser(filename);
-    const config = parser.parse();
-
-    console.log(
-      `Nice file! ${config.processes.size} processes, ${config.stocks.size} initial stocks, ${config.optimizeGoals.length} optimization goal(s)`
-    );
-    console.log('------------------------------------------');
-
-    console.log('Evaluating using Genetic Algorithm...');
-
-    const ga = new GeneticAlgorithm(config, delay);
-    const bestSolution = ga.evolve();
-
-    console.log('Optimization complete.');
-    console.log('------------------------------------------');
-    console.log('Best solution found:');
-    console.log(`Final Fitness Score: ${bestSolution.fitness.toFixed(3)}`);
-    console.log('Main walk :');
-
-    const solution = formatSolution(bestSolution, config);
-    for (const line of solution) {
-      console.log(line);
-    }
-
-    // Save to logs file
-    fs.writeFileSync('logs.txt', solution.join('\n') + '\n');
-
-    // Calculate final stocks
-    const finalStocks = new Map(config.stocks);
-    for (const gene of bestSolution.genes) {
-      const process = config.processes.get(gene.process);
-      if (process) {
-        for (const [resource, amount] of process.inputs) {
-          const current = finalStocks.get(resource) || 0;
-          finalStocks.set(resource, current - amount * gene.amount);
-        }
-        for (const [resource, amount] of process.outputs) {
-          const current = finalStocks.get(resource) || 0;
-          finalStocks.set(resource, current + amount * gene.amount);
-        }
-      }
-    }
-
-    console.log('------------------------------------------');
-    console.log(
-      `No more process doable at time ${
-        solution.length > 0
-          ? (() => {
-              const lastProcess = solution[solution.length - 1];
-              const [startTime, processName] = lastProcess.split(':');
-              const process = config.processes.get(processName);
-              return process
-                ? parseInt(startTime) + process.nbCycle
-                : startTime;
-            })()
-          : 0
-      }`
-    );
-    console.log('Stocks :');
-    for (const [stock, amount] of finalStocks) {
-      console.log(`  ${stock} => ${amount}`);
-    }
-    console.log('------------------------------------------');
-
-    console.log('Logged into file: logs.txt');
+    const traceContent = result.executionLog
+      .map(([cycle, processName]) => `${cycle}:${processName}`)
+      .join('\n');
+    fs.writeFileSync(tracefilePath, traceContent);
+    console.log(`Logged into file: ${tracefilePath}`);
     console.log('------------------------------------------');
   } catch (error) {
-    console.error(error instanceof Error ? error.message : 'An error occurred');
-    process.exit(1);
+    console.error(`Warning: Could not write to file '${tracefilePath}'`);
   }
 }
 
