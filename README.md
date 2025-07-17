@@ -17,16 +17,21 @@ It then produces an optimized execution plan that maximizes the specified goals 
 - Parallel process execution when resources allow
 - Resource dependency tracking and optimization
 - Time and resource optimization
+- Comprehensive input validation
 - Process chain verification
 - Detailed execution logs
 
 ## Installation
 
-```bash
-# Install dependencies
-npm install
+Install dependencies:
 
-# Build the project
+```bash
+npm install
+```
+
+Build the project:
+
+```bash
 npm run build
 ```
 
@@ -34,31 +39,55 @@ npm run build
 
 ### Running the Simulator
 
-```bash
-# Basic usage
-npm start -- <config_file> <max_delay>
+Basic usage:
 
-# Example
-npm start -- resources/simple 1000
+```bash
+npm run krpsim -- <config_file> <max_delay>
+```
+
+Example:
+
+```bash
+npm run krpsim -- resources/simple 1000
 ```
 
 ### Running the Verifier
 
-```bash
-# Basic usage
-npm run verif -- <config_file> <trace_file>
+Basic usage:
 
-# Example
-npm run verif -- resources/simple output.txt
+```bash
+npm run verify -- <config_file> <trace_file>
 ```
 
-### Running Tests
+Example:
 
 ```bash
-# Run all test cases
-npm run test:all
+npm run verify -- resources/simple output.txt
+```
 
-# Run simple test cases
+### Additional Scripts
+
+Clean build artifacts and logs:
+
+```bash
+npm run clean
+```
+
+Complete rebuild (clean + reinstall + build):
+
+```bash
+npm run rebuild
+```
+
+Run all test cases:
+
+```bash
+npm run test:all
+```
+
+Run simple test cases:
+
+```bash
 npm run test:simple
 ```
 
@@ -69,13 +98,13 @@ The configuration file uses a simple text format:
 ```
 # Comments start with #
 
-# Initial stocks
+# Initial stocks (required)
 stock_name:quantity
 
-# Process definitions
+# Process definitions (at least one required)
 process_name:(need1:qty1;need2:qty2):(result1:qty1;result2:qty2):delay
 
-# Optimization goals
+# Optimization goals (required)
 optimize:(time|stock1;time|stock2;...)
 ```
 
@@ -94,6 +123,27 @@ delivery:(product:1):(happy_client:1):20
 optimize:(time;happy_client)
 ```
 
+## Input Validation
+
+The parser performs comprehensive validation of input files:
+
+1. Stock Validation
+
+   - No duplicate stock names
+   - No negative initial quantities
+   - At least one stock must be defined
+
+2. Process Validation
+
+   - Unique process names
+   - All required resources must exist
+   - Valid process delays
+   - At least one process must be defined
+
+3. Optimization Validation
+   - All optimization targets must exist
+   - Valid optimization format
+
 ## Implementation Details
 
 ### Core Components
@@ -101,17 +151,18 @@ optimize:(time;happy_client)
 1. Parser (`src/parser.ts`)
 
    - Parses configuration files
-   - Validates process definitions and dependencies
+   - Performs comprehensive input validation
    - Ensures resource consistency
+   - Validates process dependencies
 
-2. Simulator (`src/simulator.ts`)
+2. Simulator (`src/krpsim.ts`)
 
    - Manages process execution and resource allocation
    - Implements optimization strategies
    - Handles parallel process execution
    - Tracks resource dependencies
 
-3. Output (`src/output.ts`)
+3. Output Management
    - Formats simulation results
    - Generates execution traces
    - Provides detailed logs
@@ -141,31 +192,45 @@ The simulator uses several strategies to optimize process execution:
 
 ### Verification
 
-The verifier (`krpsim_verif`) ensures that:
+The verification process ensures:
 
 - All resource constraints are respected
 - Process dependencies are correctly handled
 - Final resource states are valid
 - Execution trace is consistent
+- Time calculations include process durations
 
-## Examples
+## Test Cases
 
-1. Simple Chain
+### Valid Scenarios
+
+1. Simple Chain (`resources/simple`)
 
    - Linear process execution
    - Basic resource management
-   - Example: `resources/simple`
 
-2. Parallel Processes
+2. Parallel Processes (`resources/ikea`)
 
    - Multiple concurrent processes
    - Resource sharing
-   - Example: `resources/ikea`
 
-3. Complex Dependencies
+3. Complex Dependencies (`resources/steak`)
    - Multi-step processes
    - Resource reuse
-   - Example: `resources/steak`
+
+### Invalid Scenarios
+
+1. Missing Components
+
+   - No initial stocks
+   - No processes defined
+
+2. Validation Errors
+   - Duplicate process names
+   - Duplicate stock names
+   - Negative initial stocks
+   - Unknown resource requirements
+   - Invalid optimization targets
 
 ## Contributing
 
