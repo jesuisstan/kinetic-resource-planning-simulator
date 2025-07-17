@@ -79,18 +79,6 @@ Complete rebuild (clean + reinstall + build):
 npm run rebuild
 ```
 
-Run all test cases:
-
-```bash
-npm run test:all
-```
-
-Run simple test cases:
-
-```bash
-npm run test:simple
-```
-
 ## Configuration File Format
 
 The configuration file uses a simple text format:
@@ -144,100 +132,54 @@ The parser performs comprehensive validation of input files:
    - All optimization targets must exist
    - Valid optimization format
 
-## Implementation Details
+## Algorithm Description
 
-### Core Components
+The simulator uses a genetic algorithm approach to find optimal solutions:
 
-1. Parser (`src/parser.ts`)
+1. **Population Initialization**
 
-   - Parses configuration files
-   - Performs comprehensive input validation
-   - Ensures resource consistency
-   - Validates process dependencies
+   - Creates initial set of possible solutions
+   - Each solution represents a sequence of process executions
+   - Initial solutions are created with consideration of resource constraints
 
-2. Simulator (`src/krpsim.ts`)
+2. **Evolution Process**
 
-   - Manages process execution and resource allocation
-   - Implements optimization strategies
-   - Handles parallel process execution
-   - Tracks resource dependencies
+   - Solutions are evaluated based on optimization goals
+   - Best solutions are selected for reproduction
+   - New solutions are created through crossover and mutation
+   - Process repeats until optimal solution is found or time limit reached
 
-3. Output Management
-   - Formats simulation results
-   - Generates execution traces
-   - Provides detailed logs
+3. **Solution Evaluation**
+   - Calculates resource usage throughout process chain
+   - Verifies time constraints and process dependencies
+   - Considers optimization goals (time and/or specific resources)
 
-### Optimization Strategy
+The implementation uses standard genetic algorithm parameters that have been proven effective for resource optimization problems:
 
-The simulator uses several strategies to optimize process execution:
+- Population size: 100 individuals
+- Smart individuals ratio: 80%
+- Mutation rate: 10%
 
-1. Resource Allocation
-
-   - Calculates initial resource distribution
-   - Tracks resource dependencies
-   - Prioritizes critical resources
-
-2. Process Scheduling
-
-   - Evaluates process priorities based on:
-     - Direct contribution to optimization goals
-     - Resource scarcity
-     - Process dependencies
-     - Time efficiency
-
-3. Parallel Execution
-   - Identifies independent processes
-   - Maximizes resource utilization
-   - Respects process dependencies
-
-### Verification
-
-The verification process ensures:
-
-- All resource constraints are respected
-- Process dependencies are correctly handled
-- Final resource states are valid
-- Execution trace is consistent
-- Time calculations include process durations
+For detailed explanation of genetic algorithms and their application to resource optimization, see:
+https://www.optimization101.org/genetic-algorithms-in-resource-optimization
 
 ## Test Cases
 
 ### Valid Scenarios
 
-1. Simple Chain (`resources/simple`)
-
-   - Linear process execution
-   - Basic resource management
-
-2. Parallel Processes (`resources/ikea`)
-
-   - Multiple concurrent processes
-   - Resource sharing
-
-3. Complex Dependencies (`resources/steak`)
-   - Multi-step processes
-   - Resource reuse
+- `resources/simple` - Linear process chain
+- `resources/ikea` - Parallel processes
+- `resources/steak` - Complex dependencies
 
 ### Invalid Scenarios
 
-1. Missing Components
-
-   - No initial stocks
-   - No processes defined
-
-2. Validation Errors
-   - Duplicate process names
-   - Duplicate stock names
-   - Negative initial stocks
-   - Unknown resource requirements
-   - Invalid optimization targets
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+- `resources/invalid/no_stocks` - Missing initial stocks
+- `resources/invalid/unknown_need` - Unknown resource requirements
+- `resources/invalid/unknown_optimize` - Invalid optimization target
+- `resources/invalid/duplicate_process` - Duplicate process names
+- `resources/invalid/duplicate_stock` - Duplicate stock names
+- `resources/invalid/negative_stock` - Negative initial quantities
+- `resources/invalid/no_processes` - No processes defined
 
 ## License
 
