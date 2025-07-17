@@ -136,6 +136,27 @@ The parser performs comprehensive validation of input files:
 
 The simulator uses a genetic algorithm approach to find optimal solutions:
 
+```mermaid
+graph TD
+    A[Input Configuration] --> B[Parse & Validate]
+    B --> C[Initialize Population]
+    C --> D[Evolution Loop]
+    D --> E[Evaluate Fitness]
+    E --> F[Selection]
+    F --> G[Crossover]
+    G --> H[Mutation]
+    H --> I{Stop Condition?}
+    I -->|No| D
+    I -->|Yes| J[Best Solution]
+
+    subgraph "Solution Evaluation"
+    E1[Calculate Resource Usage]
+    E2[Check Time Constraints]
+    E3[Verify Process Dependencies]
+    E1 --> E2 --> E3
+    end
+```
+
 1. **Population Initialization**
 
    - Creates initial set of possible solutions
