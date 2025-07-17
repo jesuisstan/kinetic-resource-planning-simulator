@@ -1,198 +1,215 @@
-// eslint-disable-next-line @typescript-eslint/triple-slash-reference
-/// <reference types="node" />
+import { Config, Process } from './types';
 import * as fs from 'fs';
 
-export interface Stock {
-  name: string;
-  quantity: number;
-}
+export class Parser {
+  private optimizeFound: boolean = false;
 
-export interface Process {
-  name: string;
-  needs: { name: string; quantity: number }[];
-  results: { name: string; quantity: number }[];
-  delay: number;
-}
+  constructor(private filename: string) {}
 
-export interface OptimizeGoal {
-  time: boolean;
-  stocks: string[];
-}
+  parse(): Config {
+    const config: Config = {
+      stocks: new Map(),
+      processes: new Map(),
+      optimizeGoals: []
+    };
 
-export interface ConfigData {
-  stocks: Stock[];
-  processes: Process[];
-  optimize: OptimizeGoal;
-}
+    const lines = fs
+      .readFileSync(this.filename, 'utf8')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
 
-const parseNeedsOrResults = (
-  str: string
-): { name: string; quantity: number }[] => {
-  if (!str.trim()) return [];
-  return str.split(';').map((pair: string) => {
-    const [name, qty] = pair.split(':').map((s: string) => s.trim());
-    if (!name || isNaN(Number(qty)))
-      throw new Error(`Invalid need/result: ${pair}`);
-    return { name, quantity: Number(qty) };
-  });
-};
-
-export const parseConfigFile = (path: string): ConfigData => {
-  const content = fs.readFileSync(path, 'utf-8');
-  const lines = content.split(/\r?\n/).map((l: string) => l.trim());
-  const stocks: Stock[] = [];
-  const processes: Process[] = [];
-  let optimize: OptimizeGoal | null = null;
-
-  for (const line of lines) {
-    if (!line || line.startsWith('#')) continue;
-    if (line.startsWith('optimize:')) {
-      const optStr = line.slice('optimize:'.length).replace(/[()]/g, '').trim();
-      const parts = optStr.split(';').map((s: string) => s.trim());
-      const time = parts.includes('time');
-      const stocksOpt = parts.filter(
-        (s: string) => s !== 'time' && s.length > 0
-      );
-      optimize = { time, stocks: stocksOpt };
-      continue;
-    }
-    if (line.includes(':') && !line.includes('(')) {
-      // stock line
-      const [name, qty] = line.split(':').map((s: string) => s.trim());
-      if (!name || isNaN(Number(qty)))
-        throw new Error(`Invalid stock: ${line}`);
-      stocks.push({ name, quantity: Number(qty) });
-      continue;
-    }
-    // process line: <name>:(<need>:<qty>[;<need>:<qty>[...]]):(<result>:<qty>[;<result>:<qty>[...]]):<delay>
-    // Allow empty needs/results: ::
-    const parts = line.split(':');
-    if (parts.length < 4) throw new Error(`Invalid process: ${line}`);
-
-    const name = parts[0];
-    const delayStr = parts[parts.length - 1];
-    const delay = Number(delayStr);
-
-    if (!name || isNaN(delay)) throw new Error(`Invalid process: ${line}`);
-
-    // Extract needs and results from the middle parts
-    let needsStr = '';
-    let resultsStr = '';
-
-    // Find the needs part (between first and second parentheses)
-    let needsStart = line.indexOf('(');
-    let needsEnd = line.indexOf(')', needsStart);
-    if (needsStart !== -1 && needsEnd !== -1) {
-      needsStr = line.substring(needsStart + 1, needsEnd);
+    // First pass: parse all lines
+    for (let i = 0; i < lines.length; i++) {
+      try {
+        this.parseLine(lines[i], config);
+      } catch (error) {
+        throw new Error(
+          `Error at line ${i + 1}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
     }
 
-    // Find the results part (between second and third parentheses)
-    let resultsStart = line.indexOf('(', needsEnd + 1);
-    let resultsEnd = line.indexOf(')', resultsStart);
-    if (resultsStart !== -1 && resultsEnd !== -1) {
-      resultsStr = line.substring(resultsStart + 1, resultsEnd);
-    }
+    // Validation checks
+    this.validateConfig(config);
 
-    const needs = parseNeedsOrResults(needsStr);
-    const results = parseNeedsOrResults(resultsStr);
-
-    processes.push({ name, needs, results, delay });
+    return config;
   }
-  if (!optimize) throw new Error('No optimize line found');
-  return { stocks, processes, optimize };
-};
 
-export const validateConfig = (config: ConfigData): void => {
-  // Check for at least one stock and one process
-  if (config.stocks.length === 0) throw new Error('No stocks defined');
-  if (config.processes.length === 0) throw new Error('No processes defined');
+  private validateConfig(config: Config): void {
+    // Check for at least one stock
+    if (config.stocks.size === 0) {
+      throw new Error('No initial stocks defined');
+    }
 
-  // Check unique stock names
-  const stockNames = config.stocks.map((s) => s.name);
-  const stockNameSet = new Set(stockNames);
-  if (stockNames.length !== stockNameSet.size)
-    throw new Error('Duplicate stock names found');
+    // Check for at least one process
+    if (config.processes.size === 0) {
+      throw new Error('No processes defined');
+    }
 
-  // Check unique process names
-  const processNames = config.processes.map((p) => p.name);
-  const processNameSet = new Set(processNames);
-  if (processNames.length !== processNameSet.size)
-    throw new Error('Duplicate process names found');
-
-  // Check non-negative stock quantities
-  config.stocks.forEach((s) => {
-    if (!Number.isInteger(s.quantity) || s.quantity < 0)
-      throw new Error(`Stock '${s.name}' has invalid quantity: ${s.quantity}`);
-  });
-
-  // Check non-negative process delays and needs/results
-  config.processes.forEach((p) => {
-    if (!Number.isInteger(p.delay) || p.delay < 0)
-      throw new Error(`Process '${p.name}' has invalid delay: ${p.delay}`);
-    p.needs.forEach((n) => {
-      if (!Number.isInteger(n.quantity) || n.quantity < 0)
+    // Check for negative stocks
+    for (const [name, quantity] of config.stocks) {
+      if (quantity < 0) {
         throw new Error(
-          `Process '${p.name}' need '${n.name}' has invalid quantity: ${n.quantity}`
+          `Negative initial stock quantity for '${name}': ${quantity}`
         );
-    });
-    p.results.forEach((r) => {
-      if (!Number.isInteger(r.quantity) || r.quantity < 0)
+      }
+    }
+
+    // Check for unknown resources in process needs
+    const availableResources = new Set<string>();
+
+    // Add initial stocks to available resources
+    for (const [name] of config.stocks) {
+      availableResources.add(name);
+    }
+
+    // Add process outputs to available resources
+    for (const process of config.processes.values()) {
+      for (const [name] of process.outputs) {
+        availableResources.add(name);
+      }
+    }
+
+    // Check process needs against available resources
+    for (const [processName, process] of config.processes) {
+      for (const [resourceName] of process.inputs) {
+        if (!availableResources.has(resourceName)) {
+          throw new Error(
+            `Process '${processName}' requires unknown resource '${resourceName}'`
+          );
+        }
+      }
+    }
+
+    // Check optimization goals
+    if (!this.optimizeFound) {
+      throw new Error('No optimization goals defined');
+    }
+
+    for (const goal of config.optimizeGoals) {
+      if (goal !== 'time' && !availableResources.has(goal)) {
+        throw new Error(`Unknown resource in optimization goals: '${goal}'`);
+      }
+    }
+  }
+
+  private parseLine(line: string, config: Config): void {
+    const [firstPart, ...rest] = line.split(':');
+    const remainingLine = rest.join(':');
+
+    if (firstPart === 'optimize') {
+      if (this.optimizeFound) {
+        throw new Error('Multiple optimize lines found');
+      }
+      this.optimizeFound = true;
+
+      const goals = remainingLine
+        .trim()
+        .replace(/[()]/g, '')
+        .split(';')
+        .map((g) => g.trim())
+        .filter((g) => g);
+
+      if (goals.length === 0) {
+        throw new Error('No optimization goals specified');
+      }
+
+      config.optimizeGoals = goals;
+      return;
+    }
+
+    if (remainingLine.includes('(')) {
+      // Process definition
+      const process: Process = {
+        name: firstPart,
+        inputs: new Map(),
+        outputs: new Map(),
+        nbCycle: 0
+      };
+
+      // Check for duplicate process
+      if (config.processes.has(process.name)) {
+        throw new Error(`Duplicate process name: '${process.name}'`);
+      }
+
+      // Handle empty outputs case (marked with '#' or '::')
+      if (remainingLine.includes('#') || remainingLine.includes('::')) {
+        const matches = remainingLine.match(/\((.*?)\):.*?:(\d+)/);
+        if (!matches) {
+          throw new Error('Invalid process format');
+        }
+        const [_, inputsPart, cyclesPart] = matches;
+        process.inputs = this.parseResourceList(inputsPart);
+        process.nbCycle = parseInt(cyclesPart, 10);
+      } else {
+        // Regular process with outputs
+        const matches = remainingLine.match(/\((.*?)\):\((.*?)\):(\d+)/);
+        if (!matches) {
+          throw new Error('Invalid process format');
+        }
+        const [_, inputsPart, outputsPart, cyclesPart] = matches;
+        process.inputs = this.parseResourceList(inputsPart);
+        process.outputs = this.parseResourceList(outputsPart);
+        process.nbCycle = parseInt(cyclesPart, 10);
+      }
+
+      if (isNaN(process.nbCycle) || process.nbCycle <= 0) {
+        throw new Error(`Invalid cycle count: ${process.nbCycle}`);
+      }
+
+      config.processes.set(process.name, process);
+    } else {
+      // Stock definition
+      const quantity = parseInt(remainingLine, 10);
+      if (isNaN(quantity)) {
+        throw new Error(`Invalid stock quantity: ${remainingLine}`);
+      }
+
+      // Check for duplicate stock
+      if (config.stocks.has(firstPart)) {
+        throw new Error(`Duplicate stock name: '${firstPart}'`);
+      }
+
+      config.stocks.set(firstPart, quantity);
+    }
+  }
+
+  private parseResourceList(input: string): Map<string, number> {
+    const resources = new Map<string, number>();
+
+    input = input.trim();
+    if (!input) return resources;
+
+    const pairs = input.split(';');
+    for (const pair of pairs) {
+      if (!pair.trim()) continue;
+      const [name, quantityStr] = pair.split(':').map((s) => s.trim());
+      if (!name || !quantityStr) {
+        throw new Error(`Invalid resource format: ${pair}`);
+      }
+      const quantity = parseInt(quantityStr, 10);
+
+      if (isNaN(quantity)) {
+        throw new Error(`Invalid quantity for resource ${name}`);
+      }
+
+      if (quantity <= 0) {
         throw new Error(
-          `Process '${p.name}' result '${r.name}' has invalid quantity: ${r.quantity}`
+          `Non-positive quantity for resource ${name}: ${quantity}`
         );
-    });
-  });
+      }
 
-  // Collect all possible resource names: stocks + all results
-  const resourceSet = new Set<string>(stockNames);
-  config.processes.forEach((p) => {
-    p.results.forEach((r) => {
-      resourceSet.add(r.name);
-    });
-  });
+      // Check for duplicate resource in the same list
+      if (resources.has(name)) {
+        throw new Error(`Duplicate resource in list: ${name}`);
+      }
 
-  // Check that all needs refer to existing resources (stocks or results)
-  config.processes.forEach((p) => {
-    p.needs.forEach((n) => {
-      if (!resourceSet.has(n.name))
-        throw new Error(
-          `Process '${p.name}' needs unknown resource '${n.name}'`
-        );
-    });
-  });
+      resources.set(name, quantity);
+    }
 
-  // Check that all optimize stocks exist (in stocks or results)
-  config.optimize.stocks.forEach((opt) => {
-    if (!resourceSet.has(opt))
-      throw new Error(`Optimize goal refers to unknown resource '${opt}'`);
-  });
-};
-
-export const printConfigSummary = (config: ConfigData): void => {
-  console.log('Config loaded successfully!');
-  console.log(`---------------------`);
-  console.log('Stocks:');
-  config.stocks.forEach((stock) => {
-    console.log(`  - ${stock.name}: ${stock.quantity}`);
-  });
-  console.log(`Processes (${config.processes.length}):`);
-  config.processes.forEach((proc) => {
-    const needs = proc.needs.map((n) => `${n.name}:${n.quantity}`).join('; ');
-    const results = proc.results
-      .map((r) => `${r.name}:${r.quantity}`)
-      .join('; ');
-    console.log(
-      `  - ${proc.name}: needs [${needs || 'none'}] -> results [${
-        results || 'none'
-      }], delay ${proc.delay}`
-    );
-  });
-  const goals = [
-    config.optimize.time ? 'time' : null,
-    ...config.optimize.stocks
-  ]
-    .filter(Boolean)
-    .join(', ');
-  console.log(`Optimization goal: ${goals}`);
-  console.log(`---------------------`);
-};
+    return resources;
+  }
+}
