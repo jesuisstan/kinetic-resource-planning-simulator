@@ -1,36 +1,23 @@
-import { SimulationResult, StepLog } from './simulator';
+import { SimulationResult } from './simulator';
 
 export const printSimulationResult = (result: SimulationResult): void => {
-  // Step-by-step log
-  console.log('Step-by-step simulation log:');
-  result.stepLogs.forEach((step: StepLog) => {
-    const stocksB = Object.entries(step.stocksBefore)
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    const stocksA = Object.entries(step.stocksAfter)
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    console.log(`Time: ${step.time}`);
-    console.log(`  Started: ${step.started.join(', ') || '-'}`);
-    console.log(`  Finished: ${step.finished.join(', ') || '-'}`);
-    console.log(`  Stocks before: ${stocksB || '-'}`);
-    console.log(`  Stocks after:  ${stocksA || '-'}`);
-    console.log('----');
-  });
-  // Trace log
+  // Print process execution order
   console.log('Main walk:');
-  result.trace.forEach((entry: { cycle: number; process: string }) => {
-    console.log(`${entry.cycle}:${entry.process}`);
+  result.processOrder.forEach(([process, time]) => {
+    console.log(`${time}:${process}`);
   });
-  console.log(`no more process doable at time ${result.lastCycle + 1}`);
 
-  // Final stocks
+  if (result.isFinite) {
+    console.log(`no more process doable at time ${result.totalTime + 1}`);
+  }
+
+  // Print final stocks
   console.log('----');
   console.log('Stock:');
   Object.entries(result.finalStocks).forEach(([name, qty]) => {
     console.log(`${name} => ${qty}`);
   });
   console.log('------------------------------');
-  console.log(`Total simulation cycles: ${result.lastCycle}`);
+  console.log(`Total simulation time: ${result.totalTime}`);
   console.log('------------------------------');
 };

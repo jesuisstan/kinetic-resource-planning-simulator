@@ -7,7 +7,7 @@
 // CLI entry point
 
 import { parseConfigFile, printConfigSummary, validateConfig } from './parser';
-import { runSimulation } from './simulator';
+import { Simulator } from './simulator';
 import { printSimulationResult } from './output';
 
 const printUsage = (): void => {
@@ -37,7 +37,8 @@ export const main = (): void => {
     validateConfig(config);
     printConfigSummary(config);
 
-    const result = runSimulation(config, maxDelay);
+    const simulator = new Simulator(config, maxDelay);
+    const result = simulator.simulate();
     printSimulationResult(result);
   } catch (err) {
     console.error(
