@@ -2,7 +2,6 @@ import { Config, Process, Stock } from './types';
 import { evolvePopulation } from './geneticAlgorithm';
 import { runSimulation } from './simulator';
 import * as fs from 'fs';
-import * as path from 'path';
 
 function parseFile(filePath: string): Config | null {
   try {
@@ -139,8 +138,14 @@ function main() {
   console.log();
 
   // Calculate parameters based on complexity
-  const generations = Math.max(100, Math.min(500, complexityScore * 5));
-  const populationSize = Math.max(100, Math.min(500, complexityScore * 5));
+  const generations = Math.max(
+    80,
+    Math.min(400, Math.floor(complexityScore * 4))
+  );
+  const populationSize = Math.max(
+    80,
+    Math.min(400, Math.floor(complexityScore * 4))
+  );
   const mutationRate = Math.min(0.15, 0.05 + complexityScore * 0.0008);
   const crossoverRate = Math.max(
     0.7,
@@ -158,6 +163,7 @@ function main() {
   console.log(`Elite Count: ${eliteCount}`);
   console.log(`Min Sequence Length: ${minSequenceLength}`);
   console.log(`Max Sequence Length: ${maxSequenceLength}`);
+  console.log('------------------------------------------');
 
   const bestIndividual = evolvePopulation(
     config,
@@ -168,7 +174,8 @@ function main() {
     crossoverRate,
     eliteCount,
     minSequenceLength,
-    maxSequenceLength
+    maxSequenceLength,
+    complexityScore
   );
 
   const result = runSimulation(
@@ -177,6 +184,7 @@ function main() {
     timeLimit
   );
 
+  console.log('------------------------------------------');
   console.log('Main walk :');
   if (result.executionLog.length === 0) {
     console.log('(No processes executed)');

@@ -29,10 +29,5 @@ export type SimulationResult = {
   readonly timeoutReached: boolean;
 };
 
-export type MT19937State = {
-  mt: number[]; // Not readonly since we need to update this
-  mti: number; // Not readonly since we need to update this
-};
-
 // Pure functions for state management
 export type StockState = Map<string, number>;

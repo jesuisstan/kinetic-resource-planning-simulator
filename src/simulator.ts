@@ -75,12 +75,23 @@ export const runSimulation = (
   // Calculate fitness
   let fitness = 0;
   const optimizeTime = config.optimizeGoals.includes('time');
+
+  // Primary goal: maximize target resources (like C++ version)
   for (const goal of config.optimizeGoals) {
     if (goal !== 'time') {
       const produced = (stocks.get(goal) || 0) - (initialStocks.get(goal) || 0);
       fitness += produced;
     }
   }
+
+  // Add small bonus for executed processes (like C++ version)
+  fitness += executionLog.length * (optimizeTime ? 0.001 : 0.01);
+
+  // Penalty for no execution (like C++ version)
+  if (fitness === 0 && executionLog.length === 0) {
+    fitness = -1e9;
+  }
+
   if (optimizeTime) {
     fitness /= 1.0 + currentTime;
   }
