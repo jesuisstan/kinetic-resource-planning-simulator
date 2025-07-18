@@ -136,34 +136,90 @@ function main() {
   console.log('------------------------------------------');
   console.log('Evaluating using Genetic Algorithm...');
 
-  // Adjust parameters based on problem complexity
+  // Analyze problem complexity
   const processCount = config.processes.length;
-  const stockCount = config.stocks.length;
-  const isComplex = processCount > 10 || stockCount > 5;
-  const isVeryComplex = processCount > 15 || stockCount > 10;
+  const allResources = new Set<string>();
+  // Get all resources from initial stocks
+  config.stocks.forEach((s) => allResources.add(s.name));
+  // Get all resources from process inputs and outputs
+  config.processes.forEach((p) => {
+    p.inputs.forEach((_, resource) => allResources.add(resource));
+    p.outputs.forEach((_, resource) => allResources.add(resource));
+  });
+  const stockCount = allResources.size;
+  const goalCount = config.optimizeGoals.length;
+  const hasCyclicProcesses = config.processes.some((p) => {
+    const outputs = new Set(p.outputs.keys());
+    return Array.from(p.inputs.keys()).some((input) => outputs.has(input));
+  });
+
+  // Calculate complexity score (0-100)
+  let complexityScore = 0;
+  complexityScore += Math.min(50, processCount * 2); // Process count impact
+  complexityScore += Math.min(30, stockCount * 2); // Stock count impact
+  complexityScore += Math.min(20, goalCount * 5); // Goal count impact
+  if (hasCyclicProcesses) complexityScore += 20; // Cyclic process impact
 
   // Base parameters
-  let generations = 100;
+  let generations = 200;
   let populationSize = 100;
   let mutationRate = 0.05;
   let crossoverRate = 0.7;
   let eliteCount = 4;
-  let minSequenceLength = 10;
+  let minSequenceLength = Math.max(5, Math.floor(processCount * 0.2));
 
-  // Adjust for complexity
-  if (isComplex) {
-    generations += 100;
-    populationSize += 50;
-    eliteCount += 2;
-  }
-  if (isVeryComplex) {
-    generations += 100;
-    populationSize += 50;
-    eliteCount += 2;
-    mutationRate = 0.1; // Increase mutation for better exploration
+  // Adjust parameters based on complexity score - minimal scaling
+  if (complexityScore > 30) {
+    // Moderate complexity
+    generations = Math.floor(generations * 1.1);
+    populationSize = Math.floor(populationSize * 1.1);
+    eliteCount = Math.floor(eliteCount * 1.2);
+    mutationRate = 0.06;
   }
 
-  const maxSequenceLength = calculateMaxSequenceLength(config, timeLimit);
+  if (complexityScore > 60) {
+    // High complexity
+    generations = Math.floor(generations * 1.2);
+    populationSize = Math.floor(populationSize * 1.2);
+    eliteCount = Math.floor(eliteCount * 1.3);
+    mutationRate = 0.07;
+    crossoverRate = 0.75;
+  }
+
+  if (complexityScore > 80) {
+    // Very high complexity
+    generations = Math.floor(generations * 1.3);
+    populationSize = Math.floor(populationSize * 1.3);
+    eliteCount = Math.floor(eliteCount * 1.5);
+    mutationRate = 0.08;
+    crossoverRate = 0.8;
+  }
+
+  // Cap parameters to reasonable limits
+  generations = Math.min(300, generations);
+  populationSize = Math.min(150, populationSize);
+  eliteCount = Math.min(8, eliteCount);
+
+  // Calculate max sequence length based on problem characteristics
+  const maxSequenceLength = Math.min(
+    100,
+    calculateMaxSequenceLength(config, timeLimit)
+  );
+
+  console.log('Problem Analysis:');
+  console.log(`Complexity Score: ${complexityScore}/100`);
+  console.log(`Processes: ${processCount}`);
+  console.log(`Stocks: ${stockCount}`);
+  console.log(`Goals: ${goalCount}`);
+  console.log(`Has Cyclic Processes: ${hasCyclicProcesses}`);
+  console.log('\nGenetic Algorithm Parameters:');
+  console.log(`Generations: ${generations}`);
+  console.log(`Population Size: ${populationSize}`);
+  console.log(`Mutation Rate: ${mutationRate}`);
+  console.log(`Crossover Rate: ${crossoverRate}`);
+  console.log(`Elite Count: ${eliteCount}`);
+  console.log(`Sequence Length: ${minSequenceLength}-${maxSequenceLength}`);
+  console.log('------------------------------------------');
 
   const bestIndividual = evolvePopulation(
     config,

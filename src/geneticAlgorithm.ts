@@ -2,7 +2,8 @@ import { Config, Individual, Process, MT19937State } from './types';
 import {
   runSimulation,
   canStartProcess,
-  updateStocksAfterProcess
+  updateStocksAfterProcess,
+  calculateProcessEfficiency
 } from './simulator';
 
 // Pure function to create MT19937 state
@@ -59,6 +60,26 @@ export const randomInt = (
   return [Math.floor(float * (max - min + 1)) + min, newState];
 };
 
+// Helper to find processes that can be started with initial resources
+const findInitialProcesses = (
+  processes: readonly Process[],
+  stocks: ReadonlyMap<string, number>
+): Process[] => {
+  return processes.filter((p) => {
+    // Check if all inputs are available in initial stocks
+    for (const [resource, required] of p.inputs) {
+      const available = stocks.get(resource) || 0;
+      if (available < required) return false;
+    }
+    return true;
+  });
+};
+
+// Helper to find resource buying processes
+const findBuyingProcesses = (processes: readonly Process[]): Process[] => {
+  return processes.filter((p) => p.name.startsWith('buy_'));
+};
+
 // Pure function to create a smart individual
 export const createSmartIndividual = (
   processes: readonly Process[],
@@ -74,290 +95,33 @@ export const createSmartIndividual = (
   let stocks = new Map(config.stocks.map((s) => [s.name, s.quantity]));
   let currentRng = rng;
   let attempts = 0;
-  let runningProcesses: Array<{ processPtr: Process; completionTime: number }> =
-    [];
-  let currentTime = 0;
 
-  // First try to build a sequence that produces optimization goals
-  const goalSet = new Set(config.optimizeGoals.filter((g) => g !== 'time'));
-  const goalProducers = new Map<string, Process[]>();
-  const goalDependencies = new Map<string, Set<string>>();
-
-  // Find processes that directly or indirectly produce goal resources
-  for (const goal of goalSet) {
-    goalProducers.set(goal, []);
-    goalDependencies.set(goal, new Set());
-
-    // Direct producers
-    for (const process of processes) {
-      if (Array.from(process.outputs.keys()).includes(goal)) {
-        goalProducers.get(goal)!.push(process);
-        // Add input dependencies
-        for (const [input] of process.inputs) {
-          goalDependencies.get(goal)!.add(input);
-        }
-      }
-    }
-  }
-
-  // Find processes that produce dependencies
-  const dependencyProducers = new Map<string, Process[]>();
-  const processedDeps = new Set<string>();
-
-  const findDependencyProducers = (resource: string) => {
-    if (processedDeps.has(resource)) return;
-    processedDeps.add(resource);
-
-    dependencyProducers.set(resource, []);
-    for (const process of processes) {
-      for (const [output, quantity] of process.outputs) {
-        if (output === resource) {
-          dependencyProducers.get(resource)!.push(process);
-          // Recursively find producers for this process's inputs
-          for (const [input] of process.inputs) {
-            findDependencyProducers(input);
-          }
-        }
-      }
-    }
-  };
-
-  // Build dependency tree for all goals
-  for (const goal of goalSet) {
-    for (const dep of goalDependencies.get(goal)!) {
-      findDependencyProducers(dep);
-    }
-  }
-
-  // Identify cyclic processes (processes that produce their own inputs)
-  const cyclicProcesses = new Set<Process>();
-  for (const process of processes) {
-    const inputs = new Set(process.inputs.keys());
-    const outputs = new Set(process.outputs.keys());
-    if (Array.from(inputs).some((input) => outputs.has(input))) {
-      cyclicProcesses.add(process);
-    }
-  }
-
-  // Try to accumulate resources efficiently
-  const tryAccumulateResource = (
-    resource: string,
-    targetAmount: number,
-    maxAttempts: number = 20,
-    depth: number = 0,
-    visited: Set<string> = new Set()
-  ): boolean => {
-    // Prevent infinite recursion
-    if (depth > 5 || visited.has(resource)) {
-      return false;
-    }
-    visited.add(resource);
-
-    const producers = dependencyProducers.get(resource) || [];
-    if (producers.length === 0) return false;
-
-    let attempts = 0;
-    while (
-      (stocks.get(resource) || 0) < targetAmount &&
-      attempts++ < maxAttempts &&
-      sequence.length < maxSequenceLength
-    ) {
-      // Find best producer
-      let bestProducer: Process | undefined;
-      let maxOutput = 0;
-
-      for (const producer of producers) {
-        if (canStartProcess(producer, stocks, runningProcesses, currentTime)) {
-          const output = producer.outputs.get(resource) || 0;
-          const isCyclic = cyclicProcesses.has(producer);
-          // Prioritize cyclic processes that can run immediately
-          if (isCyclic || output > maxOutput) {
-            maxOutput = output;
-            bestProducer = producer;
-            if (isCyclic) break; // Prefer cyclic processes
-          }
-        }
-      }
-
-      if (!bestProducer) {
-        // Try to accumulate dependencies for the producers
-        let foundDependency = false;
-        for (const producer of producers) {
-          for (const [input, required] of producer.inputs) {
-            if ((stocks.get(input) || 0) < required) {
-              foundDependency =
-                tryAccumulateResource(
-                  input,
-                  required * 2,
-                  5,
-                  depth + 1,
-                  visited
-                ) || foundDependency;
-            }
-          }
-        }
-        if (!foundDependency) break;
-        continue;
-      }
-
-      // Add process to sequence
-      sequence.push(bestProducer.name);
-      stocks = updateStocksAfterProcess(bestProducer, stocks);
-      runningProcesses.push({
-        processPtr: bestProducer,
-        completionTime: currentTime + bestProducer.nbCycle
-      });
-      runningProcesses.sort((a, b) => a.completionTime - b.completionTime);
-      currentTime++;
-
-      // Complete any finished processes
-      while (
-        runningProcesses.length > 0 &&
-        runningProcesses[0].completionTime <= currentTime
-      ) {
-        const finished = runningProcesses.shift()!;
-        stocks = updateStocksAfterProcess(finished.processPtr, stocks);
-      }
-    }
-
-    return (stocks.get(resource) || 0) >= targetAmount;
-  };
-
-  // Try to produce goals
-  for (const goal of goalSet) {
-    const producers = goalProducers.get(goal)!;
-    if (producers.length === 0) continue;
-
-    // Find the producer with the best output/input ratio
-    let bestProducer = producers[0];
-    let bestRatio = 0;
-
-    for (const producer of producers) {
-      const outputQty = producer.outputs.get(goal) || 0;
-      const totalInputs = Array.from(producer.inputs.values()).reduce(
-        (a, b) => a + b,
-        0
-      );
-      const ratio = outputQty / (totalInputs || 1);
-      if (ratio > bestRatio) {
-        bestRatio = ratio;
-        bestProducer = producer;
-      }
-    }
-
-    // Try to accumulate required resources
-    for (const [resource, required] of bestProducer.inputs) {
-      tryAccumulateResource(resource, required * 3, 20, 0, new Set()); // Try to get enough for at least 3 runs
-    }
-
-    // Try to run the producer multiple times
-    let producerAttempts = 10;
-    while (producerAttempts-- > 0 && sequence.length < maxSequenceLength) {
-      if (
-        canStartProcess(bestProducer, stocks, runningProcesses, currentTime)
-      ) {
-        sequence.push(bestProducer.name);
-        stocks = updateStocksAfterProcess(bestProducer, stocks);
-        runningProcesses.push({
-          processPtr: bestProducer,
-          completionTime: currentTime + bestProducer.nbCycle
-        });
-        runningProcesses.sort((a, b) => a.completionTime - b.completionTime);
-        currentTime++;
-
-        // Complete any finished processes
-        while (
-          runningProcesses.length > 0 &&
-          runningProcesses[0].completionTime <= currentTime
-        ) {
-          const finished = runningProcesses.shift()!;
-          stocks = updateStocksAfterProcess(finished.processPtr, stocks);
-        }
-      } else {
-        // Try to accumulate more resources
-        let canContinue = true;
-        for (const [resource, required] of bestProducer.inputs) {
-          if (!tryAccumulateResource(resource, required, 10, 0, new Set())) {
-            canContinue = false;
-            break;
-          }
-        }
-        if (!canContinue) break;
-      }
-    }
-  }
-
-  // Then add supporting processes
+  // Try to build a sequence that produces optimization goals
   while (
     sequence.length < maxSequenceLength &&
-    attempts++ < maxSequenceLength * 2 &&
-    currentTime < timeLimit
+    attempts++ < maxSequenceLength * 2
   ) {
-    // Complete any finished processes
-    while (
-      runningProcesses.length > 0 &&
-      runningProcesses[0].completionTime <= currentTime
-    ) {
-      const finished = runningProcesses.shift()!;
-      stocks = updateStocksAfterProcess(finished.processPtr, stocks);
-    }
-
     // Find available processes
     const availableProcesses = processes.filter((p) =>
-      canStartProcess(p, stocks, runningProcesses, currentTime)
+      canStartProcess(p, stocks, [], 0)
     );
 
-    if (availableProcesses.length === 0) {
-      if (runningProcesses.length === 0) break;
-      currentTime = runningProcesses[0].completionTime;
-      continue;
-    }
+    if (availableProcesses.length === 0) break;
 
-    // Group processes by priority
-    const processByPriority = new Map<number, Process[]>();
-    for (const process of availableProcesses) {
-      const prio = priority.get(process.name) ?? 3;
-      if (!processByPriority.has(prio)) {
-        processByPriority.set(prio, []);
+    // Find best process based on priority and cycle time
+    const bestProcess = availableProcesses.reduce((best, current) => {
+      const bestPriority = priority.get(best.name) ?? 3;
+      const currentPriority = priority.get(current.name) ?? 3;
+
+      if (bestPriority !== currentPriority) {
+        return bestPriority < currentPriority ? best : current;
       }
-      processByPriority.get(prio)!.push(process);
-    }
+      return best.nbCycle < current.nbCycle ? best : current;
+    }, availableProcesses[0]);
 
-    // Select process from highest priority group
-    let selectedProcess: Process | undefined;
-    for (let p = 0; p <= 3; p++) {
-      const group = processByPriority.get(p);
-      if (group && group.length > 0) {
-        // Prefer cyclic processes in each priority group
-        const cyclicInGroup = group.filter((p) => cyclicProcesses.has(p));
-        if (cyclicInGroup.length > 0) {
-          const [idx, newRng] = randomInt(
-            currentRng,
-            0,
-            cyclicInGroup.length - 1
-          );
-          currentRng = newRng;
-          selectedProcess = cyclicInGroup[idx];
-        } else {
-          const [idx, newRng] = randomInt(currentRng, 0, group.length - 1);
-          currentRng = newRng;
-          selectedProcess = group[idx];
-        }
-        break;
-      }
-    }
-
-    if (!selectedProcess) break;
-
-    // Add process to sequence and update state
-    sequence.push(selectedProcess.name);
-    stocks = updateStocksAfterProcess(selectedProcess, stocks);
-    runningProcesses.push({
-      processPtr: selectedProcess,
-      completionTime: currentTime + selectedProcess.nbCycle
-    });
-    runningProcesses.sort((a, b) => a.completionTime - b.completionTime);
-    currentTime++;
+    // Add process to sequence
+    sequence.push(bestProcess.name);
+    stocks = updateStocksAfterProcess(bestProcess, stocks);
   }
 
   // Pad sequence if needed

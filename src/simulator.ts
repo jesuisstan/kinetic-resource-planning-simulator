@@ -114,7 +114,7 @@ const findConsumers = (
 };
 
 // Helper to calculate process efficiency
-const calculateProcessEfficiency = (process: Process): number => {
+export const calculateProcessEfficiency = (process: Process): number => {
   const totalInputs = Array.from(process.inputs.values()).reduce(
     (a, b) => a + b,
     0
@@ -124,6 +124,30 @@ const calculateProcessEfficiency = (process: Process): number => {
     0
   );
   return totalOutputs / (totalInputs * process.nbCycle);
+};
+
+// Helper to calculate resource value
+const calculateResourceValue = (
+  resource: string,
+  optimizeGoals: readonly string[],
+  stocks: StockState,
+  initialStocks: StockState
+): number => {
+  // If it's a goal resource, it has higher value
+  if (optimizeGoals.includes(resource) && resource !== 'time') {
+    const produced =
+      (stocks.get(resource) || 0) - (initialStocks.get(resource) || 0);
+    return produced;
+  }
+
+  // Special handling for 'euro' resource
+  if (resource === 'euro') {
+    const produced =
+      (stocks.get(resource) || 0) - (initialStocks.get(resource) || 0);
+    return produced * 0.01; // Small weight for profit/cost
+  }
+
+  return 0; // Don't consider other resources in fitness
 };
 
 // Helper to find resource depth in transformation chains
@@ -215,7 +239,9 @@ const calculateFitness = (
   initialStocks: StockState,
   optimizeGoals: readonly string[],
   finalCycle: number,
-  executedProcessCount: number
+  executedProcessCount: number,
+  executionLog: readonly [number, string][],
+  processMap: ReadonlyMap<string, Process>
 ): number => {
   const optimizeTime = optimizeGoals.includes('time');
   let resourceScore = 0;
@@ -228,23 +254,20 @@ const calculateFitness = (
     }
   }
 
-  // Calculate fitness
-  let fitness = resourceScore;
-
   // Time optimization
   if (optimizeTime) {
-    fitness /= 1.0 + finalCycle;
+    resourceScore /= 1.0 + finalCycle;
   }
 
-  // Add small bonus for executed processes to prefer longer valid sequences
-  fitness += executedProcessCount * (optimizeTime ? 0.001 : 0.01);
+  // Add small bonus for executed processes
+  resourceScore += executedProcessCount * (optimizeTime ? 0.001 : 0.01);
 
   // No processes executed and no resources produced
-  if (fitness === 0 && executedProcessCount === 0) {
+  if (resourceScore === 0 && executedProcessCount === 0) {
     return -1e9;
   }
 
-  return fitness;
+  return resourceScore;
 };
 
 // Pure function to run simulation
@@ -418,7 +441,9 @@ export const runSimulation = (
     initialStocks,
     config.optimizeGoals,
     finalCycle,
-    executedProcessCount
+    executedProcessCount,
+    executionLog,
+    processMap
   );
 
   return {
