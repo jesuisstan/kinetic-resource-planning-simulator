@@ -1,9 +1,8 @@
-import { Config, Individual, Process, MT19937State } from './types';
+import { Config, Process, Individual, MT19937State } from './types';
 import {
-  runSimulation,
   canStartProcess,
   updateStocksAfterProcess,
-  calculateProcessEfficiency
+  runSimulation
 } from './simulator';
 
 // Pure function to create MT19937 state
@@ -60,31 +59,10 @@ export const randomInt = (
   return [Math.floor(float * (max - min + 1)) + min, newState];
 };
 
-// Helper to find processes that can be started with initial resources
-const findInitialProcesses = (
-  processes: readonly Process[],
-  stocks: ReadonlyMap<string, number>
-): Process[] => {
-  return processes.filter((p) => {
-    // Check if all inputs are available in initial stocks
-    for (const [resource, required] of p.inputs) {
-      const available = stocks.get(resource) || 0;
-      if (available < required) return false;
-    }
-    return true;
-  });
-};
-
-// Helper to find resource buying processes
-const findBuyingProcesses = (processes: readonly Process[]): Process[] => {
-  return processes.filter((p) => p.name.startsWith('buy_'));
-};
-
 // Pure function to create a smart individual
 export const createSmartIndividual = (
   processes: readonly Process[],
   processMap: ReadonlyMap<string, Process>,
-  priority: ReadonlyMap<string, number>,
   config: Config,
   timeLimit: number,
   maxSequenceLength: number,
@@ -103,41 +81,72 @@ export const createSmartIndividual = (
   ) {
     // Find available processes
     const availableProcesses = processes.filter((p) =>
-      canStartProcess(p, stocks, [], 0)
+      canStartProcess(p, stocks)
     );
-
     if (availableProcesses.length === 0) break;
 
-    // Find best process based on priority and cycle time
-    const bestProcess = availableProcesses.reduce((best, current) => {
-      const bestPriority = priority.get(best.name) ?? 3;
-      const currentPriority = priority.get(current.name) ?? 3;
-
-      if (bestPriority !== currentPriority) {
-        return bestPriority < currentPriority ? best : current;
+    // Score processes based on their outputs
+    const scores = new Map<Process, number>();
+    for (const process of availableProcesses) {
+      let score = 0;
+      // Prefer processes that produce goal resources
+      for (const [output] of process.outputs) {
+        if (config.optimizeGoals.includes(output)) {
+          score += 100;
+        }
       }
-      return best.nbCycle < current.nbCycle ? best : current;
-    }, availableProcesses[0]);
+
+      // Prefer processes that produce inputs for other processes
+      for (const [output] of process.outputs) {
+        for (const otherProcess of processes) {
+          for (const [input] of otherProcess.inputs) {
+            if (output === input) {
+              score += 10;
+              // Extra points if the other process produces goal resources
+              for (const [otherOutput] of otherProcess.outputs) {
+                if (config.optimizeGoals.includes(otherOutput)) {
+                  score += 20;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Prefer processes with more outputs
+      score += Array.from(process.outputs.values()).reduce((a, b) => a + b, 0);
+      // Prefer shorter cycle times
+      score += 10 / (process.nbCycle + 1);
+      scores.set(process, score);
+    }
+
+    // Sort processes by score
+    const sortedProcesses = [...availableProcesses].sort(
+      (a, b) => (scores.get(b) || 0) - (scores.get(a) || 0)
+    );
+
+    // Pick from top 3 processes
+    const topN = Math.min(3, sortedProcesses.length);
+    const [index, newRng] = randomInt(currentRng, 0, topN - 1);
+    currentRng = newRng;
+    const process = sortedProcesses[index];
 
     // Add process to sequence
-    sequence.push(bestProcess.name);
-    stocks = updateStocksAfterProcess(bestProcess, stocks);
+    sequence.push(process.name);
+    stocks = updateStocksAfterProcess(process, stocks);
   }
 
-  // Pad sequence if needed
-  if (sequence.length < minSequenceLength && sequence.length > 0) {
+  // If sequence is too short, pad with random processes
+  if (sequence.length < minSequenceLength) {
+    const processNames = Array.from(processMap.keys());
     while (sequence.length < minSequenceLength) {
-      const [idx, newRng] = randomInt(currentRng, 0, sequence.length - 1);
-      sequence.push(sequence[idx]);
+      const [index, newRng] = randomInt(currentRng, 0, processNames.length - 1);
       currentRng = newRng;
+      sequence.push(processNames[index]);
     }
   }
 
-  const result = runSimulation(config, sequence, timeLimit);
-  return [
-    { processSequence: sequence, fitnessScore: result.fitness },
-    currentRng
-  ];
+  return [{ processSequence: sequence, fitnessScore: 0 }, currentRng];
 };
 
 // Pure function to create a random individual
@@ -164,11 +173,7 @@ export const createRandomIndividual = (
     currentRng = newRng;
   }
 
-  const result = runSimulation(config, sequence, timeLimit);
-  return [
-    { processSequence: sequence, fitnessScore: result.fitness },
-    currentRng
-  ];
+  return [{ processSequence: sequence, fitnessScore: 0 }, currentRng];
 };
 
 // Pure function to select parents
@@ -194,114 +199,99 @@ export const selectParents = (
     maxFitness === Number.MIN_VALUE ||
     minFitness === maxFitness
   ) {
-    const indices: number[] = [];
+    // All individuals have the same fitness or no valid fitness
+    const parents: number[] = [];
     let currentRng = rng;
     for (let i = 0; i < populationSize; i++) {
-      const [idx, newRng] = randomInt(currentRng, 0, population.length - 1);
-      indices.push(idx);
+      const [index, newRng] = randomInt(currentRng, 0, population.length - 1);
+      parents.push(index);
       currentRng = newRng;
     }
-    return [indices, currentRng];
+    return [parents, currentRng];
   }
 
-  const range = maxFitness - minFitness;
-  const normalizedFitness: number[] = [];
-  let total = 0;
+  // Normalize fitness scores to [0, 1]
+  const normalizedFitness = population.map((individual) =>
+    isFinite(individual.fitnessScore)
+      ? (individual.fitnessScore - minFitness) / (maxFitness - minFitness)
+      : 0
+  );
 
-  for (const individual of population) {
-    const normalized = isFinite(individual.fitnessScore)
-      ? (individual.fitnessScore - minFitness) / range + 0.001
-      : 0.001;
-    normalizedFitness.push(normalized);
-    total += normalized;
-  }
-
-  const cumulative: number[] = [];
-  let sum = 0;
-  for (const val of normalizedFitness) {
-    sum += val;
-    cumulative.push(sum);
-  }
-
-  const selectedIndices: number[] = [];
+  // Select parents using roulette wheel selection
+  const parents: number[] = [];
   let currentRng = rng;
-
   for (let i = 0; i < populationSize; i++) {
-    const [float, newRng] = randomFloat(currentRng);
+    const [random, newRng] = randomFloat(currentRng);
     currentRng = newRng;
-    const randomPoint = float * total;
-    let idx = cumulative.findIndex((val) => val >= randomPoint);
-    if (idx === -1) idx = population.length - 1;
-    selectedIndices.push(idx);
+    let sum = 0;
+    for (let j = 0; j < population.length; j++) {
+      sum += normalizedFitness[j];
+      if (sum >= random) {
+        parents.push(j);
+        break;
+      }
+    }
+    if (parents.length <= i) {
+      parents.push(population.length - 1);
+    }
   }
 
-  return [selectedIndices, currentRng];
+  return [parents, currentRng];
 };
 
-// Pure function to perform crossover
+// Pure function to crossover two individuals
 export const crossover = (
   parent1: Individual,
   parent2: Individual,
   crossoverRate: number,
   rng: MT19937State
 ): [[Individual, Individual], MT19937State] => {
-  const [float, rng2] = randomFloat(rng);
-  if (float > crossoverRate) {
-    return [[parent1, parent2], rng2];
+  let currentRng = rng;
+  const [random, rng2] = randomFloat(currentRng);
+  currentRng = rng2;
+
+  if (random > crossoverRate) {
+    return [
+      [
+        { processSequence: [...parent1.processSequence], fitnessScore: 0 },
+        { processSequence: [...parent2.processSequence], fitnessScore: 0 }
+      ],
+      currentRng
+    ];
   }
 
-  const seq1 = parent1.processSequence;
-  const seq2 = parent2.processSequence;
-  const len1 = seq1.length;
-  const len2 = seq2.length;
-  const shortLen = Math.min(len1, len2);
+  const [point1, rng3] = randomInt(
+    currentRng,
+    0,
+    parent1.processSequence.length - 1
+  );
+  currentRng = rng3;
+  const [point2, rng4] = randomInt(
+    currentRng,
+    0,
+    parent2.processSequence.length - 1
+  );
+  currentRng = rng4;
 
-  if (len1 < 2 || len2 < 2) {
-    return [[parent1, parent2], rng2];
-  }
-
-  const [pointA, rng3] = randomInt(rng2, 0, shortLen - 1);
-  const [pointB, rng4] = randomInt(rng3, 0, shortLen - 1);
-
-  const actualPointA = Math.min(pointA, pointB);
-  const actualPointB =
-    pointA === pointB ? (pointA + 1) % shortLen : Math.max(pointA, pointB);
-
-  const child1: string[] = [];
-  const child2: string[] = [];
-
-  // Build child1
-  child1.push(...seq1.slice(0, actualPointA));
-  if (actualPointB < len2) {
-    child1.push(...seq2.slice(actualPointA, actualPointB));
-  } else if (actualPointA < len2) {
-    child1.push(...seq2.slice(actualPointA));
-  }
-  if (actualPointB < len1) {
-    child1.push(...seq1.slice(actualPointB));
-  }
-
-  // Build child2
-  child2.push(...seq2.slice(0, actualPointA));
-  if (actualPointB < len1) {
-    child2.push(...seq1.slice(actualPointA, actualPointB));
-  } else if (actualPointA < len1) {
-    child2.push(...seq1.slice(actualPointA));
-  }
-  if (actualPointB < len2) {
-    child2.push(...seq2.slice(actualPointB));
-  }
+  const child1 = [
+    ...parent1.processSequence.slice(0, point1),
+    ...parent2.processSequence.slice(point2)
+  ];
+  const child2 = [
+    ...parent2.processSequence.slice(0, point2),
+    ...parent1.processSequence.slice(point1)
+  ];
 
   return [
     [
       { processSequence: child1, fitnessScore: 0 },
       { processSequence: child2, fitnessScore: 0 }
     ],
-    rng4
+    currentRng
   ];
 };
 
-// Pure function to perform mutation
+// Pure function to mutate an individual
 export const mutate = (
   individual: Individual,
   processes: readonly Process[],
@@ -309,43 +299,27 @@ export const mutate = (
   minSequenceLength: number,
   rng: MT19937State
 ): [Individual, MT19937State] => {
-  const sequence = [...individual.processSequence];
   let currentRng = rng;
+  const sequence = [...individual.processSequence];
 
-  // Point mutations
+  // For each position in sequence
   for (let i = 0; i < sequence.length; i++) {
-    const [float, newRng] = randomFloat(currentRng);
-    currentRng = newRng;
-    if (float < mutationRate) {
-      const [idx, newRng2] = randomInt(currentRng, 0, processes.length - 1);
-      sequence[i] = processes[idx].name;
-      currentRng = newRng2;
+    const [random, rng2] = randomFloat(currentRng);
+    currentRng = rng2;
+
+    if (random < mutationRate) {
+      // Replace with random process
+      const [index, rng3] = randomInt(currentRng, 0, processes.length - 1);
+      currentRng = rng3;
+      sequence[i] = processes[index].name;
     }
   }
 
-  // Structural mutations
-  const structuralRate = 0.02;
-  const [float, newRng] = randomFloat(currentRng);
-  currentRng = newRng;
-
-  if (float < structuralRate && sequence.length > 1) {
-    const [pos, newRng2] = randomInt(currentRng, 0, sequence.length);
-    currentRng = newRng2;
-
-    const [float2, newRng3] = randomFloat(currentRng);
-    currentRng = newRng3;
-
-    if (float2 < 0.5 && sequence.length > minSequenceLength) {
-      // Remove process
-      if (pos < sequence.length) {
-        sequence.splice(pos, 1);
-      }
-    } else {
-      // Add process
-      const [idx, newRng4] = randomInt(currentRng, 0, processes.length - 1);
-      sequence.splice(pos, 0, processes[idx].name);
-      currentRng = newRng4;
-    }
+  // Ensure minimum length
+  while (sequence.length < minSequenceLength) {
+    const [index, newRng] = randomInt(currentRng, 0, processes.length - 1);
+    currentRng = newRng;
+    sequence.push(processes[index].name);
   }
 
   return [{ processSequence: sequence, fitnessScore: 0 }, currentRng];
@@ -357,39 +331,35 @@ export const evolvePopulation = (
   timeLimit: number,
   generations: number = 100,
   populationSize: number = 100,
-  mutationRate: number = 0.1,
-  crossoverRate: number = 0.8,
+  mutationRate: number = 0.05,
+  crossoverRate: number = 0.7,
   eliteCount: number = 4,
-  minSequenceLength: number = 10,
-  maxSequenceLength: number = 50
+  minSequenceLength: number = 5,
+  maxSequenceLength: number = 100
 ): Individual => {
   console.log(
-    `Starting genetic algorithm evolution for ${generations} generations...`
+    'Starting genetic algorithm evolution for',
+    generations,
+    'generations...'
   );
 
   // Initialize RNG
   let rng = createMT19937State(Date.now());
 
-  // Create process map and priority
-  const processMap = new Map(config.processes.map((p) => [p.name, p]));
-  const priority = new Map<string, number>();
-
-  // Initialize population
+  // Create initial population
   let population: Individual[] = [];
   const smartCount = Math.floor(populationSize * 0.8);
+  const randomCount = populationSize - smartCount;
 
   console.log(
-    `Population initialized with ${populationSize} individuals: ${smartCount} smart, ${
-      populationSize - smartCount
-    } random.`
+    `Population initialized with ${populationSize} individuals: ${smartCount} smart, ${randomCount} random.`
   );
 
   // Create smart individuals
   for (let i = 0; i < smartCount; i++) {
     const [individual, newRng] = createSmartIndividual(
       config.processes,
-      processMap,
-      priority,
+      new Map(config.processes.map((p) => [p.name, p])),
       config,
       timeLimit,
       maxSequenceLength,
@@ -401,7 +371,7 @@ export const evolvePopulation = (
   }
 
   // Create random individuals
-  for (let i = smartCount; i < populationSize; i++) {
+  for (let i = 0; i < randomCount; i++) {
     const [individual, newRng] = createRandomIndividual(
       config.processes,
       config,
@@ -414,109 +384,63 @@ export const evolvePopulation = (
     rng = newRng;
   }
 
-  let bestOverall = population[0];
-  bestOverall.fitnessScore = Number.MIN_VALUE;
+  // Evaluate initial population
+  for (const individual of population) {
+    const result = runSimulation(config, individual.processSequence, timeLimit);
+    individual.fitnessScore = result.fitness;
+  }
+
+  // Sort by fitness (descending)
+  population.sort((a, b) => b.fitnessScore - a.fitnessScore);
 
   // Evolution loop
   for (let generation = 0; generation < generations; generation++) {
-    // Evaluate population
-    population = population.map((individual) => ({
-      ...individual,
-      fitnessScore: runSimulation(config, individual.processSequence, timeLimit)
-        .fitness
-    }));
-
-    // Find best individual
-    const currentBest = population.reduce((a, b) =>
-      a.fitnessScore > b.fitnessScore ? a : b
-    );
-
-    if (
-      generation === 0 ||
-      currentBest.fitnessScore > bestOverall.fitnessScore
-    ) {
-      bestOverall = currentBest;
-      console.log(
-        `Generation ${generation + 1}/${generations} - New Best Fitness: ${
-          bestOverall.fitnessScore
-        }`
-      );
-    }
-
-    // Create next generation
-    const newPopulation: Individual[] = [];
-
-    // Add elite individuals
-    population.sort((a, b) => b.fitnessScore - a.fitnessScore);
-    for (let i = 0; i < eliteCount && i < population.length; i++) {
-      newPopulation.push(population[i]);
-    }
-
     // Select parents
-    const [parentIndices, newRng] = selectParents(
+    const [parentIndices, rng2] = selectParents(
       population,
       populationSize,
       rng
     );
-    rng = newRng;
+    rng = rng2;
 
-    if (parentIndices.length === 0) {
-      if (populationSize > eliteCount) {
-        while (newPopulation.length < populationSize) {
-          newPopulation.push(
-            population.length === 0
-              ? createSmartIndividual(
-                  config.processes,
-                  processMap,
-                  priority,
-                  config,
-                  timeLimit,
-                  maxSequenceLength,
-                  minSequenceLength,
-                  rng
-                )[0]
-              : population[0]
-          );
-        }
-      }
-      population = newPopulation;
-      continue;
+    // Create next generation
+    const nextGeneration: Individual[] = [];
+
+    // Add elite individuals
+    for (let i = 0; i < eliteCount && i < population.length; i++) {
+      nextGeneration.push({
+        processSequence: [...population[i].processSequence],
+        fitnessScore: population[i].fitnessScore
+      });
     }
 
-    // Create new individuals through crossover and mutation
-    while (newPopulation.length < populationSize) {
-      const [idx1, rng2] = randomInt(rng, 0, parentIndices.length - 1);
-      const [idx2, rng3] = randomInt(rng2, 0, parentIndices.length - 1);
-      rng = rng3;
+    // Create children
+    while (nextGeneration.length < populationSize) {
+      // Select parents
+      const parent1 = population[parentIndices[nextGeneration.length]];
+      const parent2 =
+        population[parentIndices[(nextGeneration.length + 1) % populationSize]];
 
-      let tries = 0;
-      let parent1Idx = parentIndices[idx1];
-      let parent2Idx = parentIndices[idx2];
-
-      while (
-        parent1Idx === parent2Idx &&
-        parentIndices.length > 1 &&
-        tries++ < 10
-      ) {
-        const [newIdx, newRng] = randomInt(rng, 0, parentIndices.length - 1);
-        parent2Idx = parentIndices[newIdx];
-        rng = newRng;
-      }
-
-      if (parent1Idx >= population.length || parent2Idx >= population.length) {
-        continue;
-      }
-
-      const [[child1, child2], rng4] = crossover(
-        population[parent1Idx],
-        population[parent2Idx],
+      // Crossover
+      const [[child1, child2], rng3] = crossover(
+        parent1,
+        parent2,
         crossoverRate,
         rng
       );
-      rng = rng4;
+      rng = rng3;
 
-      const [mutatedChild1, rng5] = mutate(
+      // Mutate children
+      const [mutatedChild1, rng4] = mutate(
         child1,
+        config.processes,
+        mutationRate,
+        minSequenceLength,
+        rng
+      );
+      rng = rng4;
+      const [mutatedChild2, rng5] = mutate(
+        child2,
         config.processes,
         mutationRate,
         minSequenceLength,
@@ -524,46 +448,29 @@ export const evolvePopulation = (
       );
       rng = rng5;
 
-      const [mutatedChild2, rng6] = mutate(
-        child2,
-        config.processes,
-        mutationRate,
-        minSequenceLength,
-        rng
-      );
-      rng = rng6;
-
-      if (newPopulation.length < populationSize) {
-        newPopulation.push(mutatedChild1);
-      }
-      if (newPopulation.length < populationSize) {
-        newPopulation.push(mutatedChild2);
+      // Add children to next generation
+      nextGeneration.push(mutatedChild1);
+      if (nextGeneration.length < populationSize) {
+        nextGeneration.push(mutatedChild2);
       }
     }
 
-    population = newPopulation;
+    // Evaluate next generation
+    for (const individual of nextGeneration) {
+      const result = runSimulation(
+        config,
+        individual.processSequence,
+        timeLimit
+      );
+      individual.fitnessScore = result.fitness;
+    }
+
+    // Sort by fitness (descending)
+    nextGeneration.sort((a, b) => b.fitnessScore - a.fitnessScore);
+
+    // Replace population
+    population = nextGeneration;
   }
 
-  // Final evaluation
-  population = population.map((individual) => ({
-    ...individual,
-    fitnessScore: runSimulation(config, individual.processSequence, timeLimit)
-      .fitness
-  }));
-
-  const finalBest = population.reduce((a, b) =>
-    a.fitnessScore > b.fitnessScore ? a : b
-  );
-
-  if (finalBest.fitnessScore > bestOverall.fitnessScore) {
-    bestOverall = finalBest;
-  }
-
-  console.log(
-    `Evolution finished! Final best fitness score: ${bestOverall.fitnessScore.toFixed(
-      3
-    )}`
-  );
-  console.log('------------------------------------------');
-  return bestOverall;
+  return population[0];
 };

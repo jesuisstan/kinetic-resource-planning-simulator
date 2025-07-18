@@ -138,61 +138,20 @@ function main() {
 
   // Analyze problem complexity
   const processCount = config.processes.length;
-  const allResources = new Set<string>();
-  // Get all resources from initial stocks
-  config.stocks.forEach((s) => allResources.add(s.name));
-  // Get all resources from process inputs and outputs
-  config.processes.forEach((p) => {
-    p.inputs.forEach((_, resource) => allResources.add(resource));
-    p.outputs.forEach((_, resource) => allResources.add(resource));
-  });
-  const stockCount = allResources.size;
+  const stockCount = config.stocks.length;
   const goalCount = config.optimizeGoals.length;
   const hasCyclicProcesses = config.processes.some((p) => {
     const outputs = new Set(p.outputs.keys());
     return Array.from(p.inputs.keys()).some((input) => outputs.has(input));
   });
 
-  // Calculate complexity score (0-100)
-  let complexityScore = 0;
-  complexityScore += Math.min(50, processCount * 2); // Process count impact
-  complexityScore += Math.min(30, stockCount * 2); // Stock count impact
-  complexityScore += Math.min(20, goalCount * 5); // Goal count impact
-  if (hasCyclicProcesses) complexityScore += 20; // Cyclic process impact
-
-  // Base parameters
-  let generations = 200;
-  let populationSize = 100;
-  let mutationRate = 0.05;
-  let crossoverRate = 0.7;
-  let eliteCount = 4;
-  let minSequenceLength = Math.max(5, Math.floor(processCount * 0.2));
-
-  // Simple scaling based on process and stock count
-  if (processCount > 10 || stockCount > 5) {
-    generations += 50;
-    populationSize = Math.floor(populationSize * 1.2);
-    eliteCount += 1;
-    mutationRate = 0.06;
-  }
-
-  if (processCount > 15 || stockCount > 10) {
-    generations += 50;
-    populationSize = Math.floor(populationSize * 1.2);
-    eliteCount += 1;
-    mutationRate = 0.07;
-    crossoverRate = 0.75;
-  }
-
-  // Cap parameters to reasonable limits
-  generations = Math.min(300, generations);
-  populationSize = Math.min(150, populationSize);
-  eliteCount = Math.min(8, eliteCount);
-
-  // Calculate max sequence length based on problem characteristics
-  const maxSequenceLength = Math.min(
+  // Calculate complexity score
+  const complexityScore = Math.min(
     100,
-    calculateMaxSequenceLength(config, timeLimit)
+    processCount * 10 +
+      stockCount * 5 +
+      goalCount * 10 +
+      (hasCyclicProcesses ? 20 : 0)
   );
 
   console.log('Problem Analysis:');
@@ -201,13 +160,22 @@ function main() {
   console.log(`Stocks: ${stockCount}`);
   console.log(`Goals: ${goalCount}`);
   console.log(`Has Cyclic Processes: ${hasCyclicProcesses}`);
-  console.log('\nGenetic Algorithm Parameters:');
+  console.log();
+
+  // Match C++ version parameters
+  const generations = 20;
+  const populationSize = 20;
+  const mutationRate = 0.05;
+  const crossoverRate = 0.7;
+  const eliteCount = 2;
+
+  console.log('Genetic Algorithm Parameters:');
   console.log(`Generations: ${generations}`);
   console.log(`Population Size: ${populationSize}`);
   console.log(`Mutation Rate: ${mutationRate}`);
   console.log(`Crossover Rate: ${crossoverRate}`);
   console.log(`Elite Count: ${eliteCount}`);
-  console.log(`Sequence Length: ${minSequenceLength}-${maxSequenceLength}`);
+  console.log(`Sequence Length: 5-100`);
   console.log('------------------------------------------');
 
   const bestIndividual = evolvePopulation(
@@ -218,8 +186,8 @@ function main() {
     mutationRate,
     crossoverRate,
     eliteCount,
-    minSequenceLength,
-    maxSequenceLength
+    5,
+    100
   );
 
   const result = runSimulation(

@@ -29,11 +29,6 @@ export type SimulationResult = {
   readonly timeoutReached: boolean;
 };
 
-export type RunningProcess = {
-  readonly processPtr: Process;
-  readonly completionTime: number;
-};
-
 export type MT19937State = {
   mt: number[]; // Not readonly since we need to update this
   mti: number; // Not readonly since we need to update this
@@ -42,4 +37,3 @@ export type MT19937State = {
 // Pure functions for state management
 export type StockState = Map<string, number>;
 export type ProcessState = ReadonlyMap<string, Process>;
-export type PriorityState = ReadonlyMap<string, number>;
