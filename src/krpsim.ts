@@ -168,31 +168,20 @@ function main() {
   let eliteCount = 4;
   let minSequenceLength = Math.max(5, Math.floor(processCount * 0.2));
 
-  // Adjust parameters based on complexity score - minimal scaling
-  if (complexityScore > 30) {
-    // Moderate complexity
-    generations = Math.floor(generations * 1.1);
-    populationSize = Math.floor(populationSize * 1.1);
-    eliteCount = Math.floor(eliteCount * 1.2);
+  // Simple scaling based on process and stock count
+  if (processCount > 10 || stockCount > 5) {
+    generations += 50;
+    populationSize = Math.floor(populationSize * 1.2);
+    eliteCount += 1;
     mutationRate = 0.06;
   }
 
-  if (complexityScore > 60) {
-    // High complexity
-    generations = Math.floor(generations * 1.2);
+  if (processCount > 15 || stockCount > 10) {
+    generations += 50;
     populationSize = Math.floor(populationSize * 1.2);
-    eliteCount = Math.floor(eliteCount * 1.3);
+    eliteCount += 1;
     mutationRate = 0.07;
     crossoverRate = 0.75;
-  }
-
-  if (complexityScore > 80) {
-    // Very high complexity
-    generations = Math.floor(generations * 1.3);
-    populationSize = Math.floor(populationSize * 1.3);
-    eliteCount = Math.floor(eliteCount * 1.5);
-    mutationRate = 0.08;
-    crossoverRate = 0.8;
   }
 
   // Cap parameters to reasonable limits
