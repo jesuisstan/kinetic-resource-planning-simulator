@@ -172,15 +172,15 @@ const findResourceDepth = (
   return maxDepth;
 };
 
-// Pure function to build process priorities
-export const buildProcessPriority = (
+// Pure function to build process priority map
+const buildProcessPriority = (
   processes: readonly Process[],
   optimizeGoals: readonly string[]
-): PriorityState => {
+): Map<string, number> => {
   const priority = new Map<string, number>();
   const goalSet = new Set(optimizeGoals.filter((g) => g !== 'time'));
 
-  // First assign priority 0 to processes that directly produce goal resources
+  // First pass: priority 0 for processes that directly produce goal resources
   for (const process of processes) {
     for (const [output] of process.outputs) {
       if (goalSet.has(output)) {
@@ -190,28 +190,35 @@ export const buildProcessPriority = (
     }
   }
 
-  // Calculate resource depths
-  const resourceDepths = new Map<string, number>();
-  for (const goal of goalSet) {
-    resourceDepths.set(goal, findResourceDepth(goal, processes));
+  // Second pass: priority 1 and 2 for processes that produce inputs for higher priority processes
+  for (let depth = 1; depth <= 2; depth++) {
+    for (const process of processes) {
+      // Skip if process already has priority
+      if (priority.has(process.name)) continue;
+
+      // Check if this process produces any resources needed by higher priority processes
+      for (const [output] of process.outputs) {
+        for (const otherProcess of processes) {
+          if (priority.get(otherProcess.name) === depth - 1) {
+            for (const [input] of otherProcess.inputs) {
+              if (input === output) {
+                priority.set(process.name, depth);
+                break;
+              }
+            }
+          }
+          if (priority.has(process.name)) break;
+        }
+        if (priority.has(process.name)) break;
+      }
+    }
   }
 
-  // Assign priorities based on resource depths and process efficiency
+  // All other processes get priority 3
   for (const process of processes) {
-    if (priority.has(process.name)) continue;
-
-    let maxDepth = 0;
-    for (const [output] of process.outputs) {
-      const depth = resourceDepths.get(output) ?? 0;
-      maxDepth = Math.max(maxDepth, depth);
+    if (!priority.has(process.name)) {
+      priority.set(process.name, 3);
     }
-
-    // Calculate process efficiency
-    const efficiency = calculateProcessEfficiency(process);
-
-    // Priority is based on depth and efficiency
-    // Lower number = higher priority
-    priority.set(process.name, Math.max(1, 3 - maxDepth - efficiency));
   }
 
   return priority;
