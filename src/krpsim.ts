@@ -134,16 +134,21 @@ function main() {
   console.log(`Complexity Score: ${complexityScore}/100`);
   console.log(`Processes: ${processCount}`);
   console.log(`Stocks: ${stockCount}`);
-  console.log(`Goals: ${goalCount}`);
+  console.log(`Goals: ${goalCount} (${config.optimizeGoals.join(', ')})`);
   console.log(`Has Cyclic Processes: ${hasCyclicProcesses}`);
   console.log();
 
-  // Match C++ version parameters
-  const generations = 20;
-  const populationSize = 20;
-  const mutationRate = 0.05;
-  const crossoverRate = 0.7;
-  const eliteCount = 2;
+  // Calculate parameters based on complexity
+  const generations = Math.max(100, Math.min(500, complexityScore * 5));
+  const populationSize = Math.max(100, Math.min(500, complexityScore * 5));
+  const mutationRate = Math.min(0.15, 0.05 + complexityScore * 0.0008);
+  const crossoverRate = Math.max(
+    0.7,
+    Math.min(0.9, 0.7 + complexityScore * 0.0015)
+  );
+  const eliteCount = Math.max(5, Math.floor(populationSize * 0.1));
+  const minSequenceLength = Math.max(8, Math.floor(processCount * 0.8));
+  const maxSequenceLength = Math.min(250, processCount * 5);
 
   console.log('Genetic Algorithm Parameters:');
   console.log(`Generations: ${generations}`);
@@ -151,7 +156,8 @@ function main() {
   console.log(`Mutation Rate: ${mutationRate}`);
   console.log(`Crossover Rate: ${crossoverRate}`);
   console.log(`Elite Count: ${eliteCount}`);
-  console.log('------------------------------------------');
+  console.log(`Min Sequence Length: ${minSequenceLength}`);
+  console.log(`Max Sequence Length: ${maxSequenceLength}`);
 
   const bestIndividual = evolvePopulation(
     config,
@@ -161,8 +167,8 @@ function main() {
     mutationRate,
     crossoverRate,
     eliteCount,
-    5,
-    100
+    minSequenceLength,
+    maxSequenceLength
   );
 
   const result = runSimulation(
@@ -203,6 +209,8 @@ function main() {
   } else {
     console.log(`Simulation reached time limit at cycle ${timeLimit}.`);
   }
+
+  console.log('------------------------------------------');
 
   console.log('Stocks :');
   const allStockNames = new Set<string>();
