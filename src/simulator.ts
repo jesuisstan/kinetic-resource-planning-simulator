@@ -36,15 +36,17 @@ export const canStartProcess = (
   process: Process,
   stocks: StockState,
   runningProcesses: readonly RunningProcess[],
-  currentTime: number
+  currentTime: number,
+  reservedResources: Map<string, number> = new Map()
 ): boolean => {
   // Create a copy of stocks to track resource availability
   const availableStocks = new Map(stocks);
 
-  // First check immediate resource availability
+  // First check immediate resource availability considering reserved resources
   for (const [resource, required] of process.inputs) {
     const available = availableStocks.get(resource) || 0;
-    if (available < required) {
+    const reserved = reservedResources.get(resource) || 0;
+    if (available - reserved < required) {
       return false;
     }
   }
@@ -53,7 +55,8 @@ export const canStartProcess = (
   for (const running of runningProcesses) {
     for (const [resource, required] of running.processPtr.inputs) {
       const available = availableStocks.get(resource) || 0;
-      if (available < required) {
+      const reserved = reservedResources.get(resource) || 0;
+      if (available - reserved < required) {
         return false;
       }
       availableStocks.set(resource, available - required);
@@ -90,6 +93,61 @@ export const updateStocksAfterProcess = (
   return newStocks;
 };
 
+// Helper to find processes that produce a resource
+const findProducers = (
+  resource: string,
+  processes: readonly Process[]
+): Process[] => {
+  return processes.filter((p) =>
+    Array.from(p.outputs.keys()).includes(resource)
+  );
+};
+
+// Helper to find processes that consume a resource
+const findConsumers = (
+  resource: string,
+  processes: readonly Process[]
+): Process[] => {
+  return processes.filter((p) =>
+    Array.from(p.inputs.keys()).includes(resource)
+  );
+};
+
+// Helper to calculate process efficiency
+const calculateProcessEfficiency = (process: Process): number => {
+  const totalInputs = Array.from(process.inputs.values()).reduce(
+    (a, b) => a + b,
+    0
+  );
+  const totalOutputs = Array.from(process.outputs.values()).reduce(
+    (a, b) => a + b,
+    0
+  );
+  return totalOutputs / (totalInputs * process.nbCycle);
+};
+
+// Helper to find resource depth in transformation chains
+const findResourceDepth = (
+  resource: string,
+  processes: readonly Process[],
+  visited: Set<string> = new Set()
+): number => {
+  if (visited.has(resource)) return 0;
+  visited.add(resource);
+
+  const producers = findProducers(resource, processes);
+  if (producers.length === 0) return 0;
+
+  let maxDepth = 0;
+  for (const producer of producers) {
+    for (const [input] of producer.inputs) {
+      const depth = findResourceDepth(input, processes, visited);
+      maxDepth = Math.max(maxDepth, depth + 1);
+    }
+  }
+  return maxDepth;
+};
+
 // Pure function to build process priorities
 export const buildProcessPriority = (
   processes: readonly Process[],
@@ -97,92 +155,39 @@ export const buildProcessPriority = (
 ): PriorityState => {
   const priority = new Map<string, number>();
   const goalSet = new Set(optimizeGoals.filter((g) => g !== 'time'));
-  const dependencyGraph = new Map<string, Set<string>>();
-  const resourceProducers = new Map<string, Set<string>>();
 
-  // Build dependency graph and resource producers map
+  // First assign priority 0 to processes that directly produce goal resources
   for (const process of processes) {
-    // Track what resources each process produces
     for (const [output] of process.outputs) {
-      if (!resourceProducers.has(output)) {
-        resourceProducers.set(output, new Set());
-      }
-      resourceProducers.get(output)!.add(process.name);
-    }
-
-    // Build dependency graph
-    for (const [input] of process.inputs) {
-      if (!dependencyGraph.has(process.name)) {
-        dependencyGraph.set(process.name, new Set());
-      }
-      // Find processes that produce this input
-      if (resourceProducers.has(input)) {
-        for (const producer of resourceProducers.get(input)!) {
-          dependencyGraph.get(process.name)!.add(producer);
-        }
+      if (goalSet.has(output)) {
+        priority.set(process.name, 0);
+        break;
       }
     }
   }
 
-  // Find goal producers and their dependencies
-  const goalProducers = new Set<string>();
+  // Calculate resource depths
+  const resourceDepths = new Map<string, number>();
   for (const goal of goalSet) {
-    if (resourceProducers.has(goal)) {
-      for (const producer of resourceProducers.get(goal)!) {
-        goalProducers.add(producer);
-      }
-    }
+    resourceDepths.set(goal, findResourceDepth(goal, processes));
   }
 
-  // Assign priorities based on distance from goal producers
-  const visited = new Set<string>();
-  const queue: [string, number][] = [];
-
-  // Start with goal producers at priority 0
-  for (const producer of goalProducers) {
-    queue.push([producer, 0]);
-    priority.set(producer, 0);
-    visited.add(producer);
-  }
-
-  // Breadth-first search to assign priorities
-  while (queue.length > 0) {
-    const [process, level] = queue.shift()!;
-
-    if (dependencyGraph.has(process)) {
-      for (const dep of dependencyGraph.get(process)!) {
-        if (!visited.has(dep)) {
-          queue.push([dep, level + 1]);
-          priority.set(dep, level + 1);
-          visited.add(dep);
-        } else {
-          // For cyclic dependencies, use the minimum priority
-          const currentPriority = priority.get(dep) ?? Infinity;
-          if (level + 1 < currentPriority) {
-            priority.set(dep, level + 1);
-            queue.push([dep, level + 1]);
-          }
-        }
-      }
-    }
-  }
-
-  // Special handling for cyclic processes that produce their own inputs
+  // Assign priorities based on resource depths and process efficiency
   for (const process of processes) {
-    const inputs = new Set(process.inputs.keys());
-    const outputs = new Set(process.outputs.keys());
-    const isCyclic = Array.from(inputs).some((input) => outputs.has(input));
-    if (isCyclic) {
-      const currentPriority = priority.get(process.name) ?? Infinity;
-      priority.set(process.name, Math.min(currentPriority, 1)); // Prioritize cyclic processes
-    }
-  }
+    if (priority.has(process.name)) continue;
 
-  // Assign default priority to any remaining processes
-  for (const process of processes) {
-    if (!priority.has(process.name)) {
-      priority.set(process.name, 3);
+    let maxDepth = 0;
+    for (const [output] of process.outputs) {
+      const depth = resourceDepths.get(output) ?? 0;
+      maxDepth = Math.max(maxDepth, depth);
     }
+
+    // Calculate process efficiency
+    const efficiency = calculateProcessEfficiency(process);
+
+    // Priority is based on depth and efficiency
+    // Lower number = higher priority
+    priority.set(process.name, Math.max(1, 3 - maxDepth - efficiency));
   }
 
   return priority;
@@ -214,75 +219,30 @@ const calculateFitness = (
 ): number => {
   const optimizeTime = optimizeGoals.includes('time');
   let resourceScore = 0;
-  let resourceCount = 0;
-  let hasNegativeStock = false;
-
-  // Check for negative stocks (invalid state)
-  for (const [resource, quantity] of stocks) {
-    if (quantity < 0) {
-      hasNegativeStock = true;
-      break;
-    }
-  }
-
-  if (hasNegativeStock) {
-    return -1;
-  }
 
   // Calculate goal resources produced
   for (const goal of optimizeGoals) {
     if (goal !== 'time') {
       const produced = (stocks.get(goal) || 0) - (initialStocks.get(goal) || 0);
-      if (produced > 0) {
-        // For time-based resources, give extra weight to higher units
-        if (goal === 'year') {
-          resourceScore += produced * 1000;
-        } else if (goal === 'day') {
-          resourceScore += produced * 100;
-        } else if (goal === 'hour') {
-          resourceScore += produced * 10;
-        } else if (goal === 'minute') {
-          resourceScore += produced * 2;
-        } else {
-          resourceScore += produced;
-        }
-      }
-      resourceCount++;
+      resourceScore += produced;
     }
-  }
-
-  // No resources produced
-  if (resourceCount > 0 && resourceScore <= 0) {
-    return -1;
   }
 
   // Calculate fitness
   let fitness = resourceScore;
 
   // Time optimization
-  if (optimizeTime && finalCycle > 0) {
-    // Normalize time component to be between 0 and 1
-    const timeComponent = 1.0 / (1.0 + finalCycle);
-    // Weight resource score more heavily than time
-    fitness = resourceScore * 0.7 + timeComponent * resourceScore * 0.3;
+  if (optimizeTime) {
+    fitness /= 1.0 + finalCycle;
   }
 
   // Add small bonus for executed processes to prefer longer valid sequences
-  // For time-based processes, give higher bonus to encourage resource accumulation
-  const processBonus = optimizeTime ? 0.01 : 0.1;
-  fitness += executedProcessCount * processBonus;
+  fitness += executedProcessCount * (optimizeTime ? 0.001 : 0.01);
 
-  // Add bonus for maintaining cyclic resources (like clock)
-  const cyclicResources = new Set(['clock']);
-  let cyclicBonus = 0;
-  for (const resource of cyclicResources) {
-    const initial = initialStocks.get(resource) || 0;
-    const final = stocks.get(resource) || 0;
-    if (final >= initial) {
-      cyclicBonus += 0.5; // Bonus for maintaining cyclic resources
-    }
+  // No processes executed and no resources produced
+  if (fitness === 0 && executedProcessCount === 0) {
+    return -1e9;
   }
-  fitness += cyclicBonus;
 
   return fitness;
 };
@@ -310,6 +270,37 @@ export const runSimulation = (
     runningProcesses.sort((a, b) => a.completionTime - b.completionTime);
   };
 
+  // Track reserved resources
+  const reservedResources = new Map<string, number>();
+
+  // Helper to reserve resources
+  const reserveResources = (process: Process) => {
+    for (const [resource, quantity] of process.inputs) {
+      const current = reservedResources.get(resource) || 0;
+      reservedResources.set(resource, current + quantity);
+    }
+  };
+
+  // Helper to release resources
+  const releaseResources = (process: Process) => {
+    for (const [resource, quantity] of process.inputs) {
+      const current = reservedResources.get(resource) || 0;
+      reservedResources.set(resource, current - quantity);
+    }
+  };
+
+  // Helper to check resource availability
+  const hasEnoughResources = (process: Process): boolean => {
+    for (const [resource, required] of process.inputs) {
+      const available = stocks.get(resource) || 0;
+      const reserved = reservedResources.get(resource) || 0;
+      if (available - reserved < required) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   let sequenceIndex = 0;
   let opportunistMode = false;
 
@@ -323,12 +314,13 @@ export const runSimulation = (
       runningProcesses[0].completionTime <= currentTime
     ) {
       const finished = runningProcesses.shift()!;
-      const newStocks = updateStocksAfterProcess(finished.processPtr, stocks);
-      if (newStocks === stocks) {
-        // Process couldn't be completed due to resource constraints
-        continue;
+      // Release reserved resources
+      releaseResources(finished.processPtr);
+      // Add outputs to stocks
+      for (const [resource, quantity] of finished.processPtr.outputs) {
+        const current = stocks.get(resource) || 0;
+        stocks.set(resource, current + quantity);
       }
-      stocks = newStocks;
       executedProcessCount++;
       stocksUpdated = true;
     }
@@ -352,7 +344,7 @@ export const runSimulation = (
       } else {
         opportunistMode = true;
         const candidates = config.processes.filter((p) =>
-          canStartProcess(p, stocks, runningProcesses, currentTime)
+          hasEnoughResources(p)
         );
         if (candidates.length > 0) {
           chosenProcess = pickBestProcess(candidates, priority);
@@ -365,26 +357,20 @@ export const runSimulation = (
       }
 
       if (
-        !canStartProcess(
-          chosenProcess,
-          stocks,
-          runningProcesses,
-          currentTime
-        ) ||
+        !hasEnoughResources(chosenProcess) ||
         currentTime + chosenProcess.nbCycle > timeLimit
       ) {
         if (fromSequence) sequenceIndex++;
         continue;
       }
 
-      // Start the process
-      const newStocks = updateStocksAfterProcess(chosenProcess, stocks);
-      if (newStocks === stocks) {
-        // Process couldn't be started due to resource constraints
-        if (fromSequence) sequenceIndex++;
-        continue;
+      // Reserve resources and start process
+      reserveResources(chosenProcess);
+      // Remove inputs from stocks
+      for (const [resource, quantity] of chosenProcess.inputs) {
+        const current = stocks.get(resource) || 0;
+        stocks.set(resource, current - quantity);
       }
-      stocks = newStocks;
       addProcess({
         processPtr: chosenProcess,
         completionTime: currentTime + chosenProcess.nbCycle
@@ -410,9 +396,10 @@ export const runSimulation = (
     runningProcesses[0].completionTime <= timeLimit
   ) {
     const finished = runningProcesses.shift()!;
-    const newStocks = updateStocksAfterProcess(finished.processPtr, stocks);
-    if (newStocks !== stocks) {
-      stocks = newStocks;
+    releaseResources(finished.processPtr);
+    for (const [resource, quantity] of finished.processPtr.outputs) {
+      const current = stocks.get(resource) || 0;
+      stocks.set(resource, current + quantity);
     }
   }
 

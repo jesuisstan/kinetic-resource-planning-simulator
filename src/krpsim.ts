@@ -191,7 +191,6 @@ function main() {
       console.log(`${cycle}:${processName}`);
     }
   }
-  console.log('------------------------------------------');
 
   // Write to logs file
   const logsFilePath = 'logs.txt';
@@ -200,7 +199,7 @@ function main() {
       .map(([cycle, processName]) => `${cycle}:${processName}`)
       .join('\n');
     fs.writeFileSync(logsFilePath, traceContent);
-    console.log(`(Logged into file: ${logsFilePath})`);
+    console.log(`\n(Logged into file: ${logsFilePath})`);
   } catch (error) {
     console.error(`Warning: Could not write to file '${logsFilePath}'`);
   }
@@ -212,7 +211,7 @@ function main() {
       `No process could be executed within the time limit (${timeLimit}).`
     );
   } else if (!result.timeoutReached && result.finalCycle < timeLimit) {
-    console.log(`No more process doable at time ${result.finalCycle}`);
+    console.log(`No more process doable at time ${result.finalCycle + 1}`);
   } else {
     console.log(`Simulation reached time limit at cycle ${timeLimit}.`);
   }
