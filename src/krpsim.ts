@@ -190,18 +190,18 @@ function main() {
     for (const [cycle, processName] of result.executionLog) {
       console.log(`${cycle}:${processName}`);
     }
-  }
 
-  // Write to logs file
-  const logsFilePath = 'logs.txt';
-  try {
-    const traceContent = result.executionLog
-      .map(([cycle, processName]) => `${cycle}:${processName}`)
-      .join('\n');
-    fs.writeFileSync(logsFilePath, traceContent);
-    console.log(`\n(Logged into file: ${logsFilePath})`);
-  } catch (error) {
-    console.error(`Warning: Could not write to file '${logsFilePath}'`);
+    // Write to logs file
+    const logsFilePath = 'logs.txt';
+    try {
+      const traceContent = result.executionLog
+        .map(([cycle, processName]) => `${cycle}:${processName}`)
+        .join('\n');
+      fs.writeFileSync(logsFilePath, traceContent);
+      console.log(`\n(Logged into file: ${logsFilePath})`);
+    } catch (error) {
+      console.error(`Warning: Could not write to file '${logsFilePath}'`);
+    }
   }
 
   console.log('------------------------------------------');
