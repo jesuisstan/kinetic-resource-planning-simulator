@@ -4,30 +4,6 @@ import { runSimulation } from './simulator';
 import * as fs from 'fs';
 import * as path from 'path';
 
-function calculateMaxSequenceLength(config: Config, timeLimit: number): number {
-  const processes = config.processes;
-  const stocks = config.stocks;
-
-  if (processes.length === 0) {
-    return 100;
-  }
-
-  let avgCycle = 0;
-  for (const process of processes) {
-    avgCycle += process.nbCycle;
-  }
-  avgCycle /= processes.length;
-
-  const estimatedProcesses = Math.floor(timeLimit / Math.max(1, avgCycle));
-  const complexityFactor = 2.0 + stocks.length * 0.1 + processes.length * 0.2;
-  const maxLength = Math.floor(estimatedProcesses * complexityFactor);
-
-  const minValue = Math.max(100, estimatedProcesses);
-  const maxValue = Math.min(20000, estimatedProcesses * 10);
-
-  return Math.max(minValue, Math.min(maxValue, maxLength));
-}
-
 function parseFile(filePath: string): Config | null {
   try {
     const content = fs.readFileSync(filePath, 'utf8');
@@ -175,7 +151,6 @@ function main() {
   console.log(`Mutation Rate: ${mutationRate}`);
   console.log(`Crossover Rate: ${crossoverRate}`);
   console.log(`Elite Count: ${eliteCount}`);
-  console.log(`Sequence Length: 5-100`);
   console.log('------------------------------------------');
 
   const bestIndividual = evolvePopulation(

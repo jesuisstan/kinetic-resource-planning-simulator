@@ -36,4 +36,3 @@ export type MT19937State = {
 
 // Pure functions for state management
 export type StockState = Map<string, number>;
-export type ProcessState = ReadonlyMap<string, Process>;
