@@ -796,7 +796,10 @@ export const evolvePopulation = (
   }
 
   console.log(
-    `Evolution finished. Final best fitness: ${bestOverall.fitnessScore}`
+    `Evolution finished! Final best fitness score: ${bestOverall.fitnessScore.toFixed(
+      3
+    )}`
   );
+  console.log('------------------------------------------');
   return bestOverall;
 };

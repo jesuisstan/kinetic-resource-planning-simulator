@@ -165,15 +165,6 @@ function main() {
 
   const maxSequenceLength = calculateMaxSequenceLength(config, timeLimit);
 
-  console.log(
-    `Starting genetic algorithm evolution for ${generations} generations...`
-  );
-  console.log(
-    `Population initialized with ${populationSize} individuals: ${Math.floor(
-      populationSize * 0.8
-    )} smart, ${Math.floor(populationSize * 0.2)} random.`
-  );
-
   const bestIndividual = evolvePopulation(
     config,
     timeLimit,
@@ -192,9 +183,6 @@ function main() {
     timeLimit
   );
 
-  console.log('------------------------------------------');
-  console.log(`Final Fitness Score: ${result.fitness.toFixed(3)}`);
-  console.log('------------------------------------------');
   console.log('Main walk :');
   if (result.executionLog.length === 0) {
     console.log('(No processes executed)');
@@ -203,6 +191,20 @@ function main() {
       console.log(`${cycle}:${processName}`);
     }
   }
+  console.log('------------------------------------------');
+
+  // Write to logs file
+  const logsFilePath = 'logs.txt';
+  try {
+    const traceContent = result.executionLog
+      .map(([cycle, processName]) => `${cycle}:${processName}`)
+      .join('\n');
+    fs.writeFileSync(logsFilePath, traceContent);
+    console.log(`(Logged into file: ${logsFilePath})`);
+  } catch (error) {
+    console.error(`Warning: Could not write to file '${logsFilePath}'`);
+  }
+
   console.log('------------------------------------------');
 
   if (result.executionLog.length === 0) {
@@ -233,19 +235,6 @@ function main() {
     console.log(`  ${stockName} => ${result.finalStocks.get(stockName) || 0}`);
   }
   console.log('------------------------------------------');
-
-  // Write to tracefile
-  const tracefilePath = process.env.KRPSIM_TRACEFILE || 'logs.txt';
-  try {
-    const traceContent = result.executionLog
-      .map(([cycle, processName]) => `${cycle}:${processName}`)
-      .join('\n');
-    fs.writeFileSync(tracefilePath, traceContent);
-    console.log(`Logged into file: ${tracefilePath}`);
-    console.log('------------------------------------------');
-  } catch (error) {
-    console.error(`Warning: Could not write to file '${tracefilePath}'`);
-  }
 }
 
 main();
