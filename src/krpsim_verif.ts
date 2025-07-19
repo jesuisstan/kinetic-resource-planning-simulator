@@ -2,13 +2,18 @@ import { Parser } from './parser';
 import * as fs from 'fs';
 
 function verifyTrace(config: any, traceLines: string[]): void {
-  const stocks = new Map(config.stocks);
+  // Convert stocks array to Map
+  const stocks = new Map<string, number>();
+  for (const stock of config.stocks) {
+    stocks.set(stock.name, stock.quantity);
+  }
+
   let lastTime = 0;
 
   for (const line of traceLines) {
     const [timeStr, processName] = line.split(':');
     const time = parseInt(timeStr, 10);
-    const process = config.processes.get(processName);
+    const process = config.processes.find((p: any) => p.name === processName);
 
     if (!process) {
       throw new Error(`Unknown process: ${processName}`);
