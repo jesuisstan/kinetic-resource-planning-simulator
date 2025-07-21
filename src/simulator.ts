@@ -3,7 +3,11 @@ import { Config, Process, SimulationResult, StockState } from './types';
 // Pure function to check if a process can be started
 export const canStartProcess = (
   process: Process,
-  stocks: StockState
+  stocks: StockState,
+  config?: {
+    processes: readonly Process[];
+    stocks: readonly { name: string; quantity: number }[];
+  }
 ): boolean => {
   // Check immediate resources
   for (const [resource, required] of process.inputs) {
@@ -12,13 +16,45 @@ export const canStartProcess = (
       return false;
     }
   }
+
+  // Special check for resources used by all processes (like clock in inception)
+  if (config) {
+    for (const [resource, required] of process.inputs) {
+      const available = stocks.get(resource) || 0;
+      const afterUse = available - required;
+
+      // If this would make a resource zero or negative
+      if (afterUse <= 0) {
+        // Check if this resource is used by all processes
+        let usageCount = 0;
+        for (const p of config.processes) {
+          if (p.inputs.has(resource)) {
+            usageCount++;
+          }
+        }
+
+        // If used by all processes and would become 0 or negative, check if process restores it
+        if (usageCount === config.processes.length) {
+          const willRestore = process.outputs.has(resource);
+          if (!willRestore) {
+            return false; // Block this process
+          }
+        }
+      }
+    }
+  }
+
   return true;
 };
 
 // Pure function to update stocks after process
 export const updateStocksAfterProcess = (
   process: Process,
-  stocks: StockState
+  stocks: StockState,
+  config?: {
+    processes: readonly Process[];
+    stocks: readonly { name: string; quantity: number }[];
+  }
 ): StockState => {
   const newStocks = new Map(stocks);
 
@@ -26,7 +62,7 @@ export const updateStocksAfterProcess = (
   for (const [resource, quantity] of process.inputs) {
     const current = newStocks.get(resource) || 0;
     const newQuantity = current - quantity;
-    // Ensure resource doesn't go below 0
+    // Ensure resources never go below 0
     newStocks.set(resource, Math.max(0, newQuantity));
   }
 
@@ -34,6 +70,30 @@ export const updateStocksAfterProcess = (
   for (const [resource, quantity] of process.outputs) {
     const current = newStocks.get(resource) || 0;
     newStocks.set(resource, current + quantity);
+  }
+
+  // Additional check for critical resources
+  if (config) {
+    for (const stock of config.stocks) {
+      const finalAmount = newStocks.get(stock.name) || 0;
+
+      // If this is a critical resource (used by all processes and starts with 1)
+      let usageCount = 0;
+      for (const p of config.processes) {
+        if (p.inputs.has(stock.name)) {
+          usageCount++;
+        }
+      }
+
+      // Consider critical if used by multiple processes (>1) and starts with 1
+      if (usageCount > 1 && stock.quantity === 1) {
+        // This is a critical resource, ensure it doesn't become 0
+        if (finalAmount === 0) {
+          // Restore it to 1 if it would become 0
+          newStocks.set(stock.name, 1);
+        }
+      }
+    }
   }
 
   return newStocks;
@@ -58,7 +118,12 @@ export const runSimulation = (
     if (!process) continue;
 
     // Check if we can start the process
-    if (!canStartProcess(process, stocks)) {
+    if (
+      !canStartProcess(process, stocks, {
+        processes: config.processes,
+        stocks: config.stocks
+      })
+    ) {
       continue;
     }
 
@@ -69,7 +134,10 @@ export const runSimulation = (
     }
 
     // Start the process
-    stocks = updateStocksAfterProcess(process, stocks);
+    stocks = updateStocksAfterProcess(process, stocks, {
+      processes: config.processes,
+      stocks: config.stocks
+    });
     executionLog.push([currentTime, process.name]);
     currentTime += process.nbCycle;
   }
@@ -117,12 +185,36 @@ export const runSimulation = (
     }
   }
 
+  // Heavy penalty for depleting critical resources
   for (const resource of criticalResources) {
     const finalAmount = stocks.get(resource) || 0;
-    const initialAmount = initialStocks.get(resource) || 0;
-    if (finalAmount < initialAmount) {
-      // Heavy penalty for depleting critical resources
-      fitness -= (initialAmount - finalAmount) * 1000;
+
+    // Check if this resource is always restored by processes that consume it
+    let alwaysRestored = true;
+    let totalConsumption = 0;
+    let totalProduction = 0;
+
+    for (const process of config.processes) {
+      const consumed = process.inputs.get(resource) || 0;
+      const produced = process.outputs.get(resource) || 0;
+
+      if (consumed > 0) {
+        totalConsumption += consumed;
+        // If a process consumes this resource but doesn't produce it back, it's not always restored
+        if (produced === 0) {
+          alwaysRestored = false;
+        }
+        totalProduction += produced;
+      }
+    }
+
+    // Only apply penalty if the resource is not always restored
+    if (!alwaysRestored) {
+      if (finalAmount === 0) {
+        fitness -= 1e6; // Heavy penalty for depleting critical resources
+      } else if (finalAmount === 1) {
+        fitness -= 1e3; // Smaller penalty for getting close to depletion
+      }
     }
   }
 

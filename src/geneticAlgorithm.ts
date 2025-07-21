@@ -441,7 +441,7 @@ const mutate = (
   return mutated;
 };
 
-// Pure function to evolve population
+// Memory-optimized function to evolve population
 export const evolvePopulation = (
   config: Config,
   timeLimit: number,
