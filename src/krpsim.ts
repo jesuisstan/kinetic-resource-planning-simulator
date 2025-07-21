@@ -1,89 +1,8 @@
-import { Config, Process, Stock } from './types';
+import { Config } from './types';
 import { evolvePopulation } from './geneticAlgorithm';
 import { runSimulation } from './simulator';
+import { Parser } from './parser';
 import * as fs from 'fs';
-
-function parseFile(filePath: string): Config | null {
-  try {
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = content.split('\n').map((line) => line.trim());
-
-    const stocks: Stock[] = [];
-    const processes: Process[] = [];
-    const optimizeGoals: string[] = [];
-
-    let currentSection = '';
-
-    for (const line of lines) {
-      // Skip empty lines and comments
-      if (line === '' || line.startsWith('#')) {
-        continue;
-      }
-
-      // Parse stock line
-      if (line.includes(':') && !line.includes('(')) {
-        const [name, quantity] = line.split(':').map((s) => s.trim());
-        if (!isNaN(parseInt(quantity))) {
-          stocks.push({ name, quantity: parseInt(quantity) });
-        }
-        continue;
-      }
-
-      // Parse process line
-      const processMatch = line.match(/(\w+):\((.*?)\):\((.*?)\):(\d+)/);
-      if (processMatch) {
-        const [_, name, inputStr, outputStr, delay] = processMatch;
-
-        // Parse inputs
-        const inputs = new Map<string, number>();
-        if (inputStr.trim()) {
-          for (const input of inputStr.split(';')) {
-            const [resource, quantity] = input.split(':').map((s) => s.trim());
-            inputs.set(resource, parseInt(quantity));
-          }
-        }
-
-        // Parse outputs
-        const outputs = new Map<string, number>();
-        if (outputStr.trim()) {
-          for (const output of outputStr.split(';')) {
-            const [resource, quantity] = output.split(':').map((s) => s.trim());
-            outputs.set(resource, parseInt(quantity));
-          }
-        }
-
-        processes.push({
-          name,
-          inputs,
-          outputs,
-          nbCycle: parseInt(delay)
-        });
-        continue;
-      }
-
-      // Parse optimize line
-      const optimizeMatch = line.match(/optimize:\((.*?)\)/);
-      if (optimizeMatch) {
-        const goals = optimizeMatch[1].split(';').map((g) => g.trim());
-        optimizeGoals.push(...goals);
-      }
-    }
-
-    if (
-      stocks.length === 0 &&
-      processes.length === 0 &&
-      optimizeGoals.length === 0
-    ) {
-      console.error('Error: No valid data found in file');
-      return null;
-    }
-
-    return { stocks, processes, optimizeGoals };
-  } catch (error) {
-    console.error('Error parsing file:', error);
-    return null;
-  }
-}
 
 function main() {
   if (process.argv.length < 4) {
@@ -99,10 +18,8 @@ function main() {
     process.exit(1);
   }
 
-  const config = parseFile(filePath);
-  if (!config) {
-    process.exit(1);
-  }
+  const parser = new Parser();
+  const config = parser.parse(filePath);
 
   console.log('------------------------------------------');
   console.log(
@@ -115,7 +32,7 @@ function main() {
   const processCount = config.processes.length;
   const stockCount = config.stocks.length;
   const goalCount = config.optimizeGoals.length;
-  const hasCyclicProcesses = config.processes.some((p) => {
+  const hasCyclicProcesses = config.processes.some((p: any) => {
     const outputs = new Set(p.outputs.keys());
     return Array.from(p.inputs.keys()).some((input) => outputs.has(input));
   });

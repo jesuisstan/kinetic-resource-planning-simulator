@@ -1,22 +1,5 @@
 import * as fs from 'fs';
-
-export interface Process {
-  name: string;
-  inputs: Map<string, number>;
-  outputs: Map<string, number>;
-  nbCycle: number;
-}
-
-export interface Stock {
-  name: string;
-  quantity: number;
-}
-
-export interface Config {
-  processes: Process[];
-  stocks: Stock[];
-  optimizeGoals: string[];
-}
+import { Config, Process, Stock } from './types';
 
 export class Parser {
   constructor() {}
