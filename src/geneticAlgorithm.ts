@@ -5,193 +5,9 @@ import {
   runSimulation
 } from './simulator';
 
-// Helper function to calculate process chain score
-const calculateProcessChainScore = (
-  process: Process,
-  processConsumers: Map<string, Set<string>>,
-  optimizeGoals: readonly string[],
-  processes: readonly Process[],
-  initialStocks: ReadonlyMap<string, number>
-): number => {
-  let score = 0;
+const MAX_GENERATIONS_WITHOUT_IMPROVEMENT = 200;
 
-  // Build resource requirement map
-  const resourceRequirements = new Map<string, Set<string>>();
-  const resourceProducers = new Map<string, Set<string>>();
-  const resourceConsumers = new Map<string, Set<string>>();
-  const resourceDistances = new Map<string, number>();
-
-  // First pass: direct requirements and producers
-  for (const p of processes) {
-    for (const [output] of p.outputs) {
-      if (!resourceProducers.has(output)) {
-        resourceProducers.set(output, new Set());
-      }
-      resourceProducers.get(output)!.add(p.name);
-
-      if (!resourceRequirements.has(output)) {
-        resourceRequirements.set(output, new Set());
-      }
-      for (const [input] of p.inputs) {
-        resourceRequirements.get(output)!.add(input);
-      }
-    }
-    for (const [input] of p.inputs) {
-      if (!resourceConsumers.has(input)) {
-        resourceConsumers.set(input, new Set());
-      }
-      resourceConsumers.get(input)!.add(p.name);
-    }
-  }
-
-  // Calculate distances from goals using BFS
-  const queue: [string, number][] = [];
-  for (const goal of optimizeGoals) {
-    queue.push([goal, 0]);
-    resourceDistances.set(goal, 0);
-  }
-
-  while (queue.length > 0) {
-    const [resource, distance] = queue.shift()!;
-    const requirements = resourceRequirements.get(resource);
-    if (requirements) {
-      for (const req of requirements) {
-        if (!resourceDistances.has(req)) {
-          resourceDistances.set(req, distance + 1);
-          queue.push([req, distance + 1]);
-        }
-      }
-    }
-  }
-
-  // Calculate process type score
-  let processTypeScore = 0;
-  if (process.name.startsWith('buy_')) {
-    // Check if this buying process produces required resources
-    for (const [output, quantity] of process.outputs) {
-      if (resourceDistances.has(output)) {
-        const distance = resourceDistances.get(output)!;
-        // Higher score for resources closer to goals
-        processTypeScore += (20 / (distance + 1)) * Math.min(1, quantity / 100);
-      }
-      // Check if output is needed by other processes
-      const consumers = resourceConsumers.get(output);
-      if (consumers) {
-        processTypeScore += consumers.size;
-      }
-    }
-  } else if (process.name.startsWith('do_')) {
-    // Production processes get base score
-    processTypeScore = 400;
-    // Extra score if producing a goal or near-goal resource
-    for (const [output, quantity] of process.outputs) {
-      const distance = resourceDistances.get(output);
-      if (distance !== undefined) {
-        processTypeScore += (40 / (distance + 1)) * Math.min(0.5, quantity);
-      }
-    }
-    // Bonus for balanced input/output ratio
-    const totalInputs = Array.from(process.inputs.values()).reduce(
-      (a, b) => a + b,
-      0
-    );
-    const totalOutputs = Array.from(process.outputs.values()).reduce(
-      (a, b) => a + b,
-      0
-    );
-    if (totalInputs > 0) {
-      processTypeScore += Math.min(5, totalOutputs / totalInputs);
-    }
-  } else if (process.name.startsWith('vente_')) {
-    // Sales processes get high score if they produce euro
-    for (const [output, quantity] of process.outputs) {
-      if (output === 'euro') {
-        processTypeScore += Math.min(50, quantity / 100);
-      }
-    }
-  }
-  score += processTypeScore;
-
-  // Calculate resource balance score
-  let balanceScore = 0;
-  for (const [input, required] of process.inputs) {
-    const available = initialStocks.get(input) || 0;
-    if (available > 0) {
-      // Prefer processes that use available resources
-      balanceScore += Math.min(5, available / required);
-    }
-    // Check if input is preserved
-    const outputQty = process.outputs.get(input);
-    if (outputQty !== undefined && outputQty >= required) {
-      balanceScore += 2; // Bonus for preserving resources
-    }
-  }
-  score += balanceScore;
-
-  // Calculate dependency score
-  let dependencyScore = 0;
-  for (const [output, quantity] of process.outputs) {
-    const consumers = resourceConsumers.get(output);
-    if (consumers) {
-      for (const consumer of consumers) {
-        const consumerProcess = processes.find((p) => p.name === consumer);
-        if (consumerProcess) {
-          // Check if consumer produces goal or near-goal resources
-          for (const [consumerOutput, consumerQty] of consumerProcess.outputs) {
-            const distance = resourceDistances.get(consumerOutput);
-            if (distance !== undefined) {
-              // Score based on how much of our output the consumer needs
-              const consumerNeed = consumerProcess.inputs.get(output) || 0;
-              const ratio = Math.min(1, quantity / consumerNeed);
-              dependencyScore += (5 / (distance + 1)) * ratio;
-            }
-          }
-        }
-      }
-    }
-  }
-  score += dependencyScore;
-
-  // Calculate resource scarcity score
-  let scarcityScore = 0;
-  for (const [output, quantity] of process.outputs) {
-    const producers = resourceProducers.get(output)?.size || 0;
-    if (producers <= 2) {
-      scarcityScore += Math.min(5, quantity / producers);
-    }
-  }
-  score += scarcityScore;
-
-  // Time efficiency bonus (smaller for longer processes)
-  score += Math.min(2, 5 / (process.nbCycle + 1));
-
-  return score;
-};
-
-// Helper function to calculate availability penalty
-const calculateAvailabilityPenalty = (
-  process: Process,
-  stocks: StockState
-): number => {
-  let penalty = 0;
-  let maxInputRatio = 0;
-
-  // Calculate the ratio of available to required for each input
-  for (const [resource, required] of process.inputs) {
-    const available = stocks.get(resource) || 0;
-    const ratio = available / required;
-    maxInputRatio = Math.max(maxInputRatio, ratio);
-
-    // Higher penalty for consuming rare resources
-    if (ratio < 2) {
-      penalty += Math.pow(2 - ratio, 2) * 3;
-    }
-  }
-
-  return penalty;
-};
-
-// Helper function to build process priority map (similar to C++ version)
+// Simple and universal process priority calculation
 const buildProcessPriority = (
   processes: readonly Process[],
   optimizeGoals: readonly string[]
@@ -199,49 +15,93 @@ const buildProcessPriority = (
   const priorityMap = new Map<string, number>();
   const goalSet = new Set(optimizeGoals);
 
-  // Processes that produce goals get priority 0
+  // Build resource dependency graph
+  const resourceProducers = new Map<string, Set<string>>();
+  const resourceConsumers = new Map<string, Set<string>>();
+
   for (const process of processes) {
-    for (const [outputName] of process.outputs) {
-      if (goalSet.has(outputName)) {
-        priorityMap.set(process.name, 0);
-        break;
+    for (const [output] of process.outputs) {
+      if (!resourceProducers.has(output)) {
+        resourceProducers.set(output, new Set());
+      }
+      resourceProducers.get(output)!.add(process.name);
+    }
+    for (const [input] of process.inputs) {
+      if (!resourceConsumers.has(input)) {
+        resourceConsumers.set(input, new Set());
+      }
+      resourceConsumers.get(input)!.add(process.name);
+    }
+  }
+
+  // Calculate distances from goals using BFS
+  const resourceDistances = new Map<string, number>();
+  const queue: [string, number][] = [];
+
+  for (const goal of optimizeGoals) {
+    queue.push([goal, 0]);
+    resourceDistances.set(goal, 0);
+  }
+
+  while (queue.length > 0) {
+    const [resource, distance] = queue.shift()!;
+    const consumers = resourceConsumers.get(resource);
+    if (consumers) {
+      for (const consumer of consumers) {
+        const process = processes.find((p) => p.name === consumer);
+        if (process) {
+          for (const [input] of process.inputs) {
+            if (!resourceDistances.has(input)) {
+              resourceDistances.set(input, distance + 1);
+              queue.push([input, distance + 1]);
+            }
+          }
+        }
       }
     }
   }
 
-  // Processes that are inputs for priority 0 processes get priority 1
-  // Processes that are inputs for priority 1 processes get priority 2
-  for (let depth = 1; depth <= 2; ++depth) {
-    for (const process of processes) {
-      if (priorityMap.has(process.name)) continue;
+  // Assign priorities based on distance to goals
+  for (const process of processes) {
+    let priority = 1000; // Default low priority
 
-      for (const [outputName] of process.outputs) {
-        for (const otherProcess of processes) {
-          if (
-            priorityMap.has(otherProcess.name) &&
-            priorityMap.get(otherProcess.name) === depth - 1 &&
-            otherProcess.inputs.has(outputName)
-          ) {
-            priorityMap.set(process.name, depth);
-            break;
-          }
-        }
-        if (priorityMap.has(process.name)) break;
+    // Check if process produces goals directly
+    for (const [output] of process.outputs) {
+      if (goalSet.has(output)) {
+        priority = 0;
+        break;
       }
     }
+
+    if (priority === 1000) {
+      // Calculate priority based on distance to goals
+      let minDistance = Infinity;
+      for (const [output] of process.outputs) {
+        const distance = resourceDistances.get(output);
+        if (distance !== undefined && distance < minDistance) {
+          minDistance = distance;
+        }
+      }
+
+      if (minDistance !== Infinity) {
+        priority = minDistance;
+      }
+    }
+
+    priorityMap.set(process.name, priority);
   }
 
   return priorityMap;
 };
 
-// Helper function to pick best process (similar to C++ version)
+// Simple process selection
 const pickBestProcess = (
   candidates: Process[],
   priorityMap: Map<string, number>
 ): Process => {
   return candidates.reduce((best, current) => {
-    const bestPriority = priorityMap.get(best.name) ?? 3;
-    const currentPriority = priorityMap.get(current.name) ?? 3;
+    const bestPriority = priorityMap.get(best.name) ?? 1000;
+    const currentPriority = priorityMap.get(current.name) ?? 1000;
 
     if (bestPriority !== currentPriority) {
       return bestPriority < currentPriority ? best : current;
@@ -251,7 +111,7 @@ const pickBestProcess = (
   });
 };
 
-// Pure function to create a smart individual
+// Smart individual creation with exploration
 export const createSmartIndividual = (
   config: Config,
   minSequenceLength: number,
@@ -274,34 +134,156 @@ export const createSmartIndividual = (
   const sequence: string[] = [];
   let attempts = 0;
 
-  while (
-    sequence.length < maxSequenceLength &&
-    attempts++ < maxSequenceLength * 2
-  ) {
-    const availableProcesses: Process[] = [];
-
-    for (const [name, process] of processByName) {
-      if (canStartProcess(process, stocks)) {
-        availableProcesses.push(process);
+  // Identify critical resources that should never reach zero
+  const criticalResources = new Set<string>();
+  for (const stock of config.stocks) {
+    // If a resource is used by many processes, it's likely critical
+    let usageCount = 0;
+    for (const process of config.processes) {
+      if (process.inputs.has(stock.name)) {
+        usageCount++;
       }
     }
-
-    if (availableProcesses.length === 0) break;
-
-    const best = pickBestProcess(availableProcesses, priorityMap);
-    sequence.push(best.name);
-    updateStocksAfterProcess(best, stocks);
-  }
-
-  // Fill up to minimum length if needed
-  if (sequence.length < minSequenceLength && sequence.length > 0) {
-    while (sequence.length < minSequenceLength) {
-      const randomIndex = Math.floor(Math.random() * sequence.length);
-      sequence.push(sequence[randomIndex]);
+    // Only consider resources critical if they are used by many processes AND start with 1
+    // OR if they are used by most processes (>80%) and start with 1
+    // OR if they are used by ALL processes and start with 1 (special case like clock in inception)
+    if (
+      (usageCount > 2 && stock.quantity === 1) ||
+      (usageCount > Math.floor(config.processes.length * 0.8) &&
+        stock.quantity === 1) ||
+      (usageCount === config.processes.length && stock.quantity === 1)
+    ) {
+      criticalResources.add(stock.name);
     }
   }
 
-  return { processSequence: sequence, fitnessScore: 0 };
+  // Try different strategies with some randomness
+  const strategy = Math.random();
+
+  if (strategy < 0.3) {
+    // Strategy 1: Focus on high-priority processes with resource conservation
+    while (
+      sequence.length < maxSequenceLength &&
+      attempts++ < maxSequenceLength * 2
+    ) {
+      const availableProcesses: Process[] = [];
+
+      for (const [name, process] of processByName) {
+        if (canStartProcess(process, stocks)) {
+          // Check if this process would deplete critical resources
+          let isSafe = true;
+          for (const [resource, required] of process.inputs) {
+            if (criticalResources.has(resource)) {
+              const current = stocks.get(resource) || 0;
+              if (current - required <= 0) {
+                isSafe = false;
+                break;
+              }
+            }
+          }
+          if (isSafe) {
+            availableProcesses.push(process);
+          }
+        }
+      }
+
+      if (availableProcesses.length === 0) break;
+
+      const best = pickBestProcess(availableProcesses, priorityMap);
+      sequence.push(best.name);
+      updateStocksAfterProcess(best, stocks);
+    }
+  } else if (strategy < 0.6) {
+    // Strategy 2: Explore different process types with resource management
+    const processTypes = new Set<string>();
+    for (const process of config.processes) {
+      const type = process.name.split('_')[0];
+      processTypes.add(type);
+    }
+
+    const typeArray = Array.from(processTypes);
+    let typeIndex = 0;
+
+    while (
+      sequence.length < maxSequenceLength &&
+      attempts++ < maxSequenceLength * 2
+    ) {
+      const availableProcesses: Process[] = [];
+
+      for (const [name, process] of processByName) {
+        if (canStartProcess(process, stocks)) {
+          // Prefer processes that don't deplete critical resources
+          let isSafe = true;
+          for (const [resource, required] of process.inputs) {
+            if (criticalResources.has(resource)) {
+              const current = stocks.get(resource) || 0;
+              if (current - required <= 0) {
+                isSafe = false;
+                break;
+              }
+            }
+          }
+          if (isSafe) {
+            availableProcesses.push(process);
+          }
+        }
+      }
+
+      if (availableProcesses.length === 0) break;
+
+      // Try to use processes of current type
+      const currentType = typeArray[typeIndex % typeArray.length];
+      const typeProcesses = availableProcesses.filter((p) =>
+        p.name.startsWith(currentType + '_')
+      );
+
+      const processesToUse =
+        typeProcesses.length > 0 ? typeProcesses : availableProcesses;
+      const best = pickBestProcess(processesToUse, priorityMap);
+      sequence.push(best.name);
+      updateStocksAfterProcess(best, stocks);
+
+      typeIndex++;
+    }
+  } else {
+    // Strategy 3: Random exploration with priority bias and resource conservation
+    while (
+      sequence.length < maxSequenceLength &&
+      attempts++ < maxSequenceLength * 2
+    ) {
+      const availableProcesses: Process[] = [];
+
+      for (const [name, process] of processByName) {
+        if (canStartProcess(process, stocks)) {
+          // Strong preference for processes that don't deplete critical resources
+          let isSafe = true;
+          for (const [resource, required] of process.inputs) {
+            if (criticalResources.has(resource)) {
+              const current = stocks.get(resource) || 0;
+              if (current - required <= 0) {
+                isSafe = false;
+                break;
+              }
+            }
+          }
+          if (isSafe) {
+            availableProcesses.push(process);
+          }
+        }
+      }
+
+      if (availableProcesses.length === 0) break;
+
+      const best = pickBestProcess(availableProcesses, priorityMap);
+      sequence.push(best.name);
+      updateStocksAfterProcess(best, stocks);
+    }
+  }
+
+  return {
+    processSequence: sequence,
+    fitnessScore: 0
+  };
 };
 
 // Pure function to create a random individual
@@ -332,8 +314,9 @@ const initializePopulation = (
   maxSequenceLength: number
 ): Individual[] => {
   const population: Individual[] = [];
-  const smartCount = Math.floor(populationSize * 0.8);
-  const randomCount = populationSize - smartCount;
+  const smartCount = Math.floor(populationSize * 0.6);
+  const randomCount = Math.floor(populationSize * 0.3);
+  const diverseCount = populationSize - smartCount - randomCount;
 
   // Create smart individuals
   for (let i = 0; i < smartCount; i++) {
@@ -355,10 +338,20 @@ const initializePopulation = (
     population.push(individual);
   }
 
+  // Create diverse individuals with different strategies
+  for (let i = 0; i < diverseCount; i++) {
+    const individual = createSmartIndividual(
+      config,
+      minSequenceLength,
+      maxSequenceLength
+    );
+    population.push(individual);
+  }
+
   return population;
 };
 
-// Helper function to select parents (simplified version)
+// Helper function to select parents
 const selectParents = (
   population: Individual[],
   populationSize: number
@@ -385,7 +378,7 @@ const selectParents = (
   return selectedIndices;
 };
 
-// Helper function to crossover (simplified version)
+// Helper function to crossover
 const crossover = (
   parent1: Individual,
   parent2: Individual,
@@ -426,7 +419,7 @@ const crossover = (
   ];
 };
 
-// Helper function to mutate (simplified version)
+// Helper function to mutate
 const mutate = (
   individual: Individual,
   mutationRate: number,
@@ -461,24 +454,22 @@ export const evolvePopulation = (
   maxSequenceLength: number,
   complexityScore: number
 ): Individual => {
-  // Initialize population
-  const population = initializePopulation(
+  let population = initializePopulation(
     config,
     populationSize,
     minSequenceLength,
     maxSequenceLength
   );
 
-  // Early stopping variables
+  let bestIndividual = population[0];
   let generationsWithoutImprovement = 0;
-  const maxGenerationsWithoutImprovement = 142; // Stop if no improvement for 142 generations
-  let bestFitnessSoFar = -Infinity;
-  let bestIndividualSoFar: Individual | null = null;
-  const shouldUseEarlyStopping = complexityScore >= 100; // Only for high complexity scenarios
+  const maxGenerationsWithoutImprovement = Math.max(
+    MAX_GENERATIONS_WITHOUT_IMPROVEMENT,
+    generations / 2
+  );
 
-  // Evolution loop
   for (let generation = 0; generation < generations; generation++) {
-    // Evaluate population
+    // Evaluate fitness for all individuals
     for (const individual of population) {
       const result = runSimulation(
         config,
@@ -488,86 +479,63 @@ export const evolvePopulation = (
       individual.fitnessScore = result.fitness;
     }
 
-    // Find best individual in current generation
-    const currentBestIndividual = population.reduce((best, current) =>
-      current.fitnessScore > best.fitnessScore ? current : best
-    );
+    // Sort by fitness
+    population.sort((a, b) => b.fitnessScore - a.fitnessScore);
 
-    // Check for improvement
-    if (currentBestIndividual.fitnessScore > bestFitnessSoFar) {
-      bestFitnessSoFar = currentBestIndividual.fitnessScore;
-      bestIndividualSoFar = { ...currentBestIndividual };
+    // Update best individual
+    if (population[0].fitnessScore > bestIndividual.fitnessScore) {
+      bestIndividual = { ...population[0] };
       generationsWithoutImprovement = 0;
     } else {
       generationsWithoutImprovement++;
     }
 
-    // Early stopping check
-    if (
-      shouldUseEarlyStopping &&
-      generationsWithoutImprovement >= maxGenerationsWithoutImprovement
-    ) {
+    // Early stopping
+    if (generationsWithoutImprovement >= maxGenerationsWithoutImprovement) {
       console.log(
-        `Early stopping at generation ${generation} - no improvement for ${maxGenerationsWithoutImprovement} generations`
+        `Early stopping at generation ${generation} - no improvement for ${generationsWithoutImprovement} generations`
       );
       break;
     }
 
-    // Progress logging
+    // Log progress
     if (generation % 10 === 0) {
       console.log(
-        `Generation ${generation}/${generations} - Best Fitness Score: ${currentBestIndividual.fitnessScore.toFixed(
+        `Generation ${generation}/${generations} - Best Fitness Score: ${population[0].fitnessScore.toFixed(
           5
         )}`
       );
     }
 
-    // Selection
-    const selectedIndices = selectParents(population, populationSize);
-    const selectedPopulation = selectedIndices.map(
-      (index) => population[index]
-    );
-
     // Create new population
     const newPopulation: Individual[] = [];
 
     // Elitism: keep best individuals
-    const sortedPopulation = [...population].sort(
-      (a, b) => b.fitnessScore - a.fitnessScore
-    );
-    newPopulation.push(...sortedPopulation.slice(0, eliteCount));
+    for (let i = 0; i < eliteCount; i++) {
+      newPopulation.push({ ...population[i] });
+    }
 
-    // Crossover and mutation
-    while (newPopulation.length < populationSize) {
-      const parent1 =
-        selectedPopulation[
-          Math.floor(Math.random() * selectedPopulation.length)
-        ];
-      const parent2 =
-        selectedPopulation[
-          Math.floor(Math.random() * selectedPopulation.length)
-        ];
+    // Selection and reproduction
+    const parentIndices = selectParents(
+      population,
+      populationSize - eliteCount
+    );
+
+    for (let i = 0; i < parentIndices.length; i += 2) {
+      const parent1 = population[parentIndices[i]];
+      const parent2 = population[parentIndices[i + 1] || parentIndices[0]];
 
       const [child1, child2] = crossover(parent1, parent2, crossoverRate);
 
-      newPopulation.push(mutate(child1, mutationRate, config.processes));
-      if (newPopulation.length < populationSize) {
-        newPopulation.push(mutate(child2, mutationRate, config.processes));
-      }
+      // Mutate children
+      const mutatedChild1 = mutate(child1, mutationRate, config.processes);
+      const mutatedChild2 = mutate(child2, mutationRate, config.processes);
+
+      newPopulation.push(mutatedChild1, mutatedChild2);
     }
 
-    // Update population
-    population.length = 0;
-    population.push(...newPopulation);
+    population = newPopulation.slice(0, populationSize);
   }
 
-  // Return the best individual found during evolution
-  if (bestIndividualSoFar) {
-    return bestIndividualSoFar;
-  }
-
-  // Fallback: return best from current population
-  return population.reduce((best, current) =>
-    current.fitnessScore > best.fitnessScore ? current : best
-  );
+  return bestIndividual;
 };

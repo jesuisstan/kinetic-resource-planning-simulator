@@ -153,7 +153,7 @@ function main() {
   );
   const eliteCount = Math.max(5, Math.floor(populationSize * 0.1));
   const minSequenceLength = Math.max(8, Math.floor(processCount * 0.8));
-  const maxSequenceLength = Math.min(250, processCount * 5);
+  const maxSequenceLength = Math.min(100, processCount * 3); // Reduced from 5 to 3
 
   console.log('Genetic Algorithm Parameters:');
   console.log(`Generations: ${generations}`);
