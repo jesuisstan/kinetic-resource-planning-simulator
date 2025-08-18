@@ -1,8 +1,8 @@
-import { Config } from './src/types';
-import { Parser } from './src/parser';
-import { runSimulation } from './src/simulator';
-import { evolvePopulation } from './src/geneticAlgorithm';
-import { canStartProcess, updateStocksAfterProcess } from './src/simulator';
+import { Config } from './types';
+import { Parser } from './parser';
+import { runSimulation } from './simulator';
+import { evolvePopulation } from './geneticAlgorithm';
+import { canStartProcess, updateStocksAfterProcess } from './simulator';
 
 function debugOptimalChain(filePath: string, timeLimit: number) {
   console.log('🔍 ANALYSIS OF OPTIMAL PROCESS EXECUTION CHAIN');

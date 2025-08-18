@@ -1,8 +1,8 @@
-import { Config } from './src/types';
-import { Parser } from './src/parser';
-import { runSimulation } from './src/simulator';
-import { createSmartIndividual } from './src/geneticAlgorithm';
-import { canStartProcess, updateStocksAfterProcess } from './src/simulator';
+import { Config } from './types';
+import { Parser } from './parser';
+import { runSimulation } from './simulator';
+import { createSmartIndividual } from './geneticAlgorithm';
+import { canStartProcess, updateStocksAfterProcess } from './simulator';
 
 function debugProcessChain(filePath: string, timeLimit: number) {
   console.log('🔍 ANALYSIS OF PROCESS EXECUTION CHAIN LOGIC');
