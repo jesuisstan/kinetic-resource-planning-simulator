@@ -106,9 +106,10 @@ function main() {
   if (result.executionLog.length === 0) {
     console.log('(No processes executed)');
   } else {
-    for (const [cycle, processName] of result.executionLog) {
-      console.log(`${cycle}:${processName}`);
-    }
+    // todo uncomment later
+    //for (const [cycle, processName] of result.executionLog) {
+    //  console.log(`${cycle}:${processName}`);
+    //}
 
     // Write to logs file
     const logsFilePath = 'logs.txt';

@@ -11,6 +11,8 @@
     "krpsim": "node --max-old-space-size=8192 dist/krpsim.js",
     "verify": "node dist/krpsim_verif.js",
     "dev": "ts-node src/krpsim.ts",
+    "debug": "ts-node debug_chain.ts",
+    "debug-optimal": "ts-node debug_optimal_chain.ts",
     "test:simple": "npm run build && npm run krpsim -- resources/simple 1000 && npm run krpsim -- resources/ikea 1000 && npm run krpsim -- resources/steak 1000",
     "test:hard": "npm run build && npm run krpsim -- resources/recre 5000 && npm run krpsim -- resources/inception 5000 && npm run krpsim -- resources/pomme 5000",
     "test:all": "npm run build && npm run krpsim -- resources/simple 1000 && npm run krpsim -- resources/ikea 1000 && npm run krpsim -- resources/steak 1000 && npm run krpsim -- resources/recre 5000 && npm run krpsim -- resources/inception 5000 && npm run krpsim -- resources/pomme 5000"
@@ -23,7 +25,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^24.0.14",
+    "@types/node": "^24.3.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
