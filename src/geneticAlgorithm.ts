@@ -4,7 +4,6 @@ import {
   updateStocksAfterProcess,
   runSimulation
 } from './simulator';
-import { analyzeResourceChains, ChainAnalysis } from './chainAnalysis';
 
 const MAX_GENERATIONS_WITHOUT_IMPROVEMENT = 300;
 
@@ -471,12 +470,6 @@ export const createSmartIndividual = (
   maxSequenceLength: number
 ): Individual => {
   // Skip deep chain analysis for performance - use basic logic instead
-  const chainAnalysis = {
-    resourcePaths: new Map(),
-    processStrategies: new Map(),
-    goalStrategies: new Map(),
-    scaleRequirements: new Map()
-  };
   const stocks = new Map<string, number>();
   for (const stock of config.stocks) {
     stocks.set(stock.name, stock.quantity);
@@ -1435,6 +1428,8 @@ export const evolvePopulation = (
     generations / 2
   );
 
+  console.log('💡 SEARCHING FOR OPTIMAL SOLUTION...');
+
   for (let generation = 0; generation < generations; generation++) {
     // Evaluate fitness for all individuals
     for (const individual of population) {
@@ -1460,7 +1455,7 @@ export const evolvePopulation = (
     // Early stopping
     if (generationsWithoutImprovement >= maxGenerationsWithoutImprovement) {
       console.log(
-        `Early stopping at generation ${generation} - no improvement for ${generationsWithoutImprovement} generations`
+        `❌ Early stopping at generation ${generation} - no improvement for ${generationsWithoutImprovement} generations`
       );
       break;
     }

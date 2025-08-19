@@ -6,27 +6,77 @@ import * as fs from 'fs';
 
 function main() {
   if (process.argv.length < 4) {
-    console.error('Usage: npm run krpsim -- <filename> <delay>');
+    console.error('⚠️ Usage: npm run krpsim -- <filename> <delay>');
     process.exit(1);
   }
 
   const filePath = process.argv[2];
   const timeLimit = parseInt(process.argv[3]);
 
+  // Check if file exists
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ Error: Configuration file '${filePath}' not found.`);
+    console.error(`💡 Please check the file path and try again.`);
+    process.exit(1);
+  }
+
   if (isNaN(timeLimit) || timeLimit <= 0) {
-    console.error('Error: Delay must be a positive integer.');
+    console.error('❌ Error: Delay must be a positive integer.');
     process.exit(1);
   }
 
   const parser = new Parser();
-  const config = parser.parse(filePath);
 
-  console.log('------------------------------------------');
-  console.log(
-    `Nice file! ${config.processes.length} processes, ${config.stocks.length} initial stocks, ${config.optimizeGoals.length} optimization goal(s)`
-  );
-  console.log('------------------------------------------');
-  console.log('Evaluating using Genetic Algorithm...');
+  let config: Config;
+  try {
+    config = parser.parse(filePath);
+  } catch (error) {
+    console.error(
+      `❌ Error: Failed to parse configuration file '${filePath}'.`
+    );
+    console.error(
+      `💡 Please check if the file is a valid KRPSIM configuration.`
+    );
+    console.error(
+      `🔧 Error details: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
+    process.exit(1);
+  }
+
+  console.log('🤖 KRPSIM - Kinetic Resource Planning Simulator');
+  console.log('='.repeat(60));
+
+  console.log('🔍 ANALYSING FILE...\n');
+  console.log(`📁 Scenario: ${filePath}`);
+  console.log(`⏱️  Time limit: ${timeLimit}`);
+  console.log(`🎯 Optimization goals: ${config.optimizeGoals.join(', ')}`);
+
+  // Analysis of initial resources
+  console.log('📦 Initial resources:');
+  for (const stock of config.stocks) {
+    console.log(`  ${stock.name}: ${stock.quantity}`);
+  }
+
+  // Analysis of processes
+  console.log('⚙️  Available processes:');
+  for (const process of config.processes) {
+    const inputs = Array.from(process.inputs.entries())
+      .map(([k, v]) => `${k}:${v}`)
+      .join(', ');
+    const outputs = Array.from(process.outputs.entries())
+      .map(([k, v]) => `${k}:${v}`)
+      .join(', ');
+    console.log(`  ${process.name}:`);
+    console.log(`    🔽 Inputs: ${inputs}`);
+    console.log(`    🔼 Outputs: ${outputs}`);
+    console.log(`    ⏰ Duration: ${process.nbCycle} cycles`);
+    console.log();
+  }
+
+  console.log('='.repeat(60));
+  console.log('🧬 EVALUATING USING GENETIC ALGORITHM...\n');
 
   // Analyze problem complexity
   const processCount = config.processes.length;
@@ -46,13 +96,7 @@ function main() {
       (hasCyclicProcesses ? 20 : 0)
   );
 
-  console.log('Problem Analysis:');
-  console.log(`Complexity Score: ${complexityScore}/100`);
-  console.log(`Processes: ${processCount}`);
-  console.log(`Stocks: ${stockCount}`);
-  console.log(`Goals: ${goalCount} (${config.optimizeGoals.join(', ')})`);
-  console.log(`Has Cyclic Processes: ${hasCyclicProcesses}`);
-  console.log();
+  console.log(`📊 Complexity Score: ${complexityScore}/100`);
 
   // Calculate parameters based on complexity (increased for better exploration)
   const generations = Math.max(
@@ -72,15 +116,15 @@ function main() {
   const minSequenceLength = Math.max(15, Math.floor(processCount * 1.2));
   const maxSequenceLength = Math.min(150, processCount * 4); // Increased for complex chains
 
-  console.log('Genetic Algorithm Parameters:');
-  console.log(`Generations: ${generations}`);
-  console.log(`Population Size: ${populationSize}`);
-  console.log(`Mutation Rate: ${mutationRate}`);
-  console.log(`Crossover Rate: ${crossoverRate}`);
-  console.log(`Elite Count: ${eliteCount}`);
-  console.log(`Min Sequence Length: ${minSequenceLength}`);
-  console.log(`Max Sequence Length: ${maxSequenceLength}`);
-  console.log('------------------------------------------');
+  console.log('🧬 Genetic Algorithm Parameters:');
+  console.log(`  🔄 Generations: ${generations}`);
+  console.log(`  👥 Population Size: ${populationSize}`);
+  console.log(`  🎲 Mutation Rate: ${mutationRate}`);
+  console.log(`  🔀 Crossover Rate: ${crossoverRate}`);
+  console.log(`  ⭐ Elite Count: ${eliteCount}`);
+  console.log(`  📏 Min Sequence Length: ${minSequenceLength}`);
+  console.log(`  📏 Max Sequence Length: ${maxSequenceLength}`);
+  console.log('='.repeat(60));
 
   const bestIndividual = evolvePopulation(
     config,
@@ -101,8 +145,8 @@ function main() {
     timeLimit
   );
 
-  console.log('------------------------------------------');
-  console.log('Main walk :');
+  console.log('='.repeat(60));
+  console.log('🚶 Main walk...');
   if (result.executionLog.length === 0) {
     console.log('(No processes executed)');
   } else {
@@ -111,8 +155,10 @@ function main() {
     //  console.log(`${cycle}:${processName}`);
     //}
 
-    // Write to logs file
-    const logsFilePath = 'logs.txt';
+    // Write to logs file with scenario-specific name
+    const fileName =
+      filePath.split('/').pop()?.replace('.krpsim', '') || 'unknown';
+    const logsFilePath = `logs_${fileName}.txt`;
     try {
       const traceContent = result.executionLog
         .map(([cycle, processName]) => `${cycle}:${processName}`)
@@ -120,25 +166,25 @@ function main() {
       fs.writeFileSync(logsFilePath, traceContent);
       console.log(`\n(Logged into file: ${logsFilePath})`);
     } catch (error) {
-      console.error(`Warning: Could not write to file '${logsFilePath}'`);
+      console.error(`❌ Warning: Could not write to file '${logsFilePath}'`);
     }
   }
 
-  console.log('------------------------------------------');
+  console.log('='.repeat(60));
 
   if (result.executionLog.length === 0) {
     console.log(
-      `No process could be executed within the time limit (${timeLimit}).`
+      `❌ No process could be executed within the time limit (${timeLimit}).`
     );
   } else if (!result.timeoutReached && result.finalCycle < timeLimit) {
-    console.log(`No more process doable at time ${result.finalCycle + 1}`);
+    console.log(`✅ No more process doable at time ${result.finalCycle + 1}`);
   } else {
-    console.log(`Simulation reached time limit at cycle ${timeLimit}.`);
+    console.log(`⏰ Simulation reached time limit at cycle ${timeLimit}.`);
   }
 
-  console.log('------------------------------------------');
+  console.log('='.repeat(60));
 
-  console.log('Stocks :');
+  console.log('📦 Final Stocks:');
   const allStockNames = new Set<string>();
   for (const stock of config.stocks) {
     allStockNames.add(stock.name);
@@ -153,9 +199,14 @@ function main() {
   }
 
   for (const stockName of Array.from(allStockNames).sort()) {
-    console.log(`  ${stockName} => ${result.finalStocks.get(stockName) || 0}`);
+    const initial =
+      config.stocks.find((s) => s.name === stockName)?.quantity || 0;
+    const final = result.finalStocks.get(stockName) || 0;
+    const change = final - initial;
+    const changeStr = change > 0 ? `+${change}` : change.toString();
+    console.log(`  ${stockName}: ${initial} → ${final} (${changeStr})`);
   }
-  console.log('------------------------------------------');
+  console.log('='.repeat(60));
 }
 
 main();

@@ -135,7 +135,13 @@ function analyzeEconomicLogic(filePath: string) {
     }
 
     const profit = totalOutputValue - totalInputCost;
-    const profitMargin = totalInputCost > 0 ? profit / totalInputCost : profit;
+    // For zero-cost processes, use a reasonable high margin based on output value
+    const profitMargin =
+      totalInputCost > 0
+        ? profit / totalInputCost
+        : totalOutputValue > 0
+        ? 5
+        : 0; // 500% for zero-cost processes with output
 
     processAnalysis.set(process.name, {
       inputCost: totalInputCost,

@@ -11,7 +11,7 @@ dist/
 
 # logs
 *.log
-logs.txt
+logs_*.txt
 
 # coverage
 coverage/
