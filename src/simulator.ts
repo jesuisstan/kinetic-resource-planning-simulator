@@ -112,7 +112,15 @@ export const runSimulation = (
   let currentTime = 0;
   let timeoutReached = false;
 
-  // Try to execute each process in sequence
+  // Track running processes and their completion times
+  const runningProcesses: Array<{
+    process: Process;
+    startTime: number;
+    completionTime: number;
+    processName: string;
+  }> = [];
+
+  // Process the sequence and start processes when possible
   for (const processName of processSequence) {
     const process = processMap.get(processName);
     if (!process) continue;
@@ -133,13 +141,81 @@ export const runSimulation = (
       break;
     }
 
-    // Start the process
-    stocks = updateStocksAfterProcess(process, stocks, {
-      processes: config.processes,
-      stocks: config.stocks
-    });
+    // Start the process (consume inputs immediately)
+    for (const [resource, quantity] of process.inputs) {
+      const current = stocks.get(resource) || 0;
+      stocks.set(resource, current - quantity);
+    }
+
     executionLog.push([currentTime, process.name]);
-    currentTime += process.nbCycle;
+
+    // Add to running processes
+    runningProcesses.push({
+      process,
+      startTime: currentTime,
+      completionTime: currentTime + process.nbCycle,
+      processName: process.name
+    });
+  }
+
+  // Advance time and complete processes
+  while (currentTime < timeLimit && runningProcesses.length > 0) {
+    // Find the next process to complete
+    const nextCompletion = runningProcesses.reduce((min, p) =>
+      p.completionTime < min.completionTime ? p : min
+    );
+
+    // Advance time to the next completion
+    currentTime = nextCompletion.completionTime;
+
+    // Complete the process (produce outputs)
+    for (const [resource, quantity] of nextCompletion.process.outputs) {
+      const current = stocks.get(resource) || 0;
+      stocks.set(resource, current + quantity);
+    }
+
+    // Remove completed process
+    const index = runningProcesses.findIndex((p) => p === nextCompletion);
+    runningProcesses.splice(index, 1);
+
+    // Try to start more processes from the sequence
+    for (let i = executionLog.length; i < processSequence.length; i++) {
+      const processName = processSequence[i];
+      const process = processMap.get(processName);
+      if (!process) continue;
+
+      // Check if we can start the process now
+      if (
+        !canStartProcess(process, stocks, {
+          processes: config.processes,
+          stocks: config.stocks
+        })
+      ) {
+        continue;
+      }
+
+      // Check time limit
+      if (currentTime + process.nbCycle > timeLimit) {
+        timeoutReached = true;
+        break;
+      }
+
+      // Start the process (consume inputs immediately)
+      for (const [resource, quantity] of process.inputs) {
+        const current = stocks.get(resource) || 0;
+        stocks.set(resource, current - quantity);
+      }
+
+      executionLog.push([currentTime, process.name]);
+
+      // Add to running processes
+      runningProcesses.push({
+        process,
+        startTime: currentTime,
+        completionTime: currentTime + process.nbCycle,
+        processName: process.name
+      });
+    }
   }
 
   // Calculate fitness
