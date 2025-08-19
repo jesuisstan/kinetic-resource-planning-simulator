@@ -11,6 +11,8 @@ export class Parser {
     const processes: Process[] = [];
     const stocks: Stock[] = [];
     const optimizeGoals: string[] = [];
+    const seenProcessNames = new Set<string>();
+    const seenStockNames = new Set<string>();
 
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -63,6 +65,12 @@ export class Parser {
 
             const cycles = parseInt(cyclesStr);
             if (!isNaN(cycles)) {
+              // Check for duplicate process names
+              if (seenProcessNames.has(name)) {
+                throw new Error(`Duplicate process name: '${name}'`);
+              }
+              seenProcessNames.add(name);
+
               processes.push({
                 name,
                 inputs,
@@ -75,6 +83,19 @@ export class Parser {
           // Stock definition
           const amount = parseInt(parts[1]);
           if (!isNaN(amount)) {
+            // Check for negative stock quantities
+            if (amount < 0) {
+              throw new Error(
+                `Negative stock quantity for '${name}': ${amount}`
+              );
+            }
+
+            // Check for duplicate stock names
+            if (seenStockNames.has(name)) {
+              throw new Error(`Duplicate stock name: '${name}'`);
+            }
+            seenStockNames.add(name);
+
             stocks.push({
               name,
               quantity: amount
@@ -84,6 +105,53 @@ export class Parser {
       }
     }
 
+    // Validate configuration
+    this.validateConfig(processes, stocks, optimizeGoals);
+
     return { processes, stocks, optimizeGoals };
+  }
+
+  private validateConfig(
+    processes: Process[],
+    stocks: Stock[],
+    optimizeGoals: string[]
+  ): void {
+    // Check if there are any processes
+    if (processes.length === 0) {
+      throw new Error('No processes defined in configuration');
+    }
+
+    // Check if there are any stocks
+    if (stocks.length === 0) {
+      throw new Error('No stocks defined in configuration');
+    }
+
+    // Create a set of all available resources (initial stocks + produced by processes)
+    const availableResources = new Set(stocks.map((s) => s.name));
+
+    // Add resources that are produced by processes
+    for (const process of processes) {
+      for (const [resource] of process.outputs) {
+        availableResources.add(resource);
+      }
+    }
+
+    // Check if all process inputs reference available resources
+    for (const process of processes) {
+      for (const [resource] of process.inputs) {
+        if (!availableResources.has(resource)) {
+          throw new Error(
+            `Process '${process.name}' requires unknown resource: '${resource}'`
+          );
+        }
+      }
+    }
+
+    // Check if all optimize goals reference available resources (except 'time')
+    for (const goal of optimizeGoals) {
+      if (goal !== 'time' && !availableResources.has(goal)) {
+        throw new Error(`Unknown optimization goal: '${goal}'`);
+      }
+    }
   }
 }
