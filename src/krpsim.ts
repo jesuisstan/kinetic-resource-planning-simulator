@@ -206,6 +206,16 @@ function main() {
     const changeStr = change > 0 ? `+${change}` : change.toString();
     console.log(`  ${stockName}: ${initial} → ${final} (${changeStr})`);
   }
+
+  console.log('\n🎯 ANALYSIS OF GOAL ACHIEVEMENT:');
+  for (const goal of config.optimizeGoals) {
+    if (goal !== 'time') {
+      const initial = config.stocks.find((s) => s.name === goal)?.quantity || 0;
+      const final = result.finalStocks.get(goal) || 0;
+      const produced = final - initial;
+      console.log(`  ${goal}: produced ${produced} units`);
+    }
+  }
   console.log('='.repeat(60));
 }
 
