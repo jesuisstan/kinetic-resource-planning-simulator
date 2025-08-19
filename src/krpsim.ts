@@ -54,23 +54,23 @@ function main() {
   console.log(`Has Cyclic Processes: ${hasCyclicProcesses}`);
   console.log();
 
-  // Calculate parameters based on complexity
+  // Calculate parameters based on complexity (increased for better exploration)
   const generations = Math.max(
-    80,
-    Math.min(400, Math.floor(complexityScore * 4))
+    200,
+    Math.min(600, Math.floor(complexityScore * 6))
   );
   const populationSize = Math.max(
-    80,
-    Math.min(400, Math.floor(complexityScore * 4))
+    150,
+    Math.min(600, Math.floor(complexityScore * 6))
   );
-  const mutationRate = Math.min(0.15, 0.05 + complexityScore * 0.0008);
+  const mutationRate = Math.min(0.2, 0.08 + complexityScore * 0.001);
   const crossoverRate = Math.max(
-    0.7,
-    Math.min(0.9, 0.7 + complexityScore * 0.0015)
+    0.75,
+    Math.min(0.95, 0.75 + complexityScore * 0.002)
   );
-  const eliteCount = Math.max(5, Math.floor(populationSize * 0.1));
-  const minSequenceLength = Math.max(8, Math.floor(processCount * 0.8));
-  const maxSequenceLength = Math.min(100, processCount * 3); // Reduced from 5 to 3
+  const eliteCount = Math.max(15, Math.floor(populationSize * 0.15));
+  const minSequenceLength = Math.max(15, Math.floor(processCount * 1.2));
+  const maxSequenceLength = Math.min(150, processCount * 4); // Increased for complex chains
 
   console.log('Genetic Algorithm Parameters:');
   console.log(`Generations: ${generations}`);

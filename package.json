@@ -13,6 +13,8 @@
     "dev": "ts-node src/krpsim.ts",
     "debug": "ts-node src/debug_chain.ts",
     "debug-optimal": "ts-node src/debug_optimal_chain.ts",
+    "debug-economic": "ts-node src/debug_economic_analysis.ts",
+    "debug-chain": "ts-node src/debug_chain_analysis.ts",
     "test:simple": "npm run build && npm run krpsim -- resources/simple 1000 && npm run krpsim -- resources/ikea 1000 && npm run krpsim -- resources/steak 1000",
     "test:hard": "npm run build && npm run krpsim -- resources/recre 5000 && npm run krpsim -- resources/inception 5000 && npm run krpsim -- resources/pomme 5000",
     "test:all": "npm run build && npm run krpsim -- resources/simple 1000 && npm run krpsim -- resources/ikea 1000 && npm run krpsim -- resources/steak 1000 && npm run krpsim -- resources/recre 5000 && npm run krpsim -- resources/inception 5000 && npm run krpsim -- resources/pomme 5000"

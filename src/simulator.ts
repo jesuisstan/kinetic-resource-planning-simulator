@@ -157,6 +157,72 @@ export const runSimulation = (
   // Add small bonus for executed processes
   fitness += executionLog.length * (optimizeTime ? 0.001 : 0.01);
 
+  // NEW: Bonus for accumulating resources for high-value chains
+  const goalSet = new Set(config.optimizeGoals);
+  let chainAccumulationBonus = 0;
+
+  // Identify high-value processes and their input requirements
+  for (const process of config.processes) {
+    for (const [output, quantity] of process.outputs) {
+      if (goalSet.has(output) && quantity > 10000) {
+        // This is a very high-value process (like vente_boite)
+        // Calculate bonus for accumulating its inputs
+        for (const [input, inputQuantity] of process.inputs) {
+          const current = stocks.get(input) || 0;
+          const target = inputQuantity * 2; // Aim for 2 runs
+          if (current >= target) {
+            // Bonus for reaching accumulation target
+            chainAccumulationBonus += quantity * 0.5; // 50% of the output value - much stronger bonus
+          } else if (current > 0) {
+            // Partial bonus for partial accumulation
+            chainAccumulationBonus += (current / target) * quantity * 0.25; // 25% scaled by progress
+          }
+        }
+      }
+    }
+  }
+
+  fitness += chainAccumulationBonus;
+
+  // NEW: Bonus for producing intermediate products needed for high-value chains
+  let intermediateProductionBonus = 0;
+
+  // Build resource dependency graph
+  const resourceConsumers = new Map<string, Set<string>>();
+  for (const process of config.processes) {
+    for (const [input] of process.inputs) {
+      if (!resourceConsumers.has(input)) {
+        resourceConsumers.set(input, new Set());
+      }
+      resourceConsumers.get(input)!.add(process.name);
+    }
+  }
+
+  // Check each resource for its value in high-value chains
+  for (const [resource, quantity] of stocks) {
+    const consumers = resourceConsumers.get(resource);
+    if (consumers) {
+      let maxChainValue = 0;
+      for (const consumerName of consumers) {
+        const consumer = config.processes.find((p) => p.name === consumerName);
+        if (consumer) {
+          for (const [consumerOutput, consumerQuantity] of consumer.outputs) {
+            if (goalSet.has(consumerOutput) && consumerQuantity > 10000) {
+              // This resource is used in a very high-value chain
+              maxChainValue = Math.max(maxChainValue, consumerQuantity);
+            }
+          }
+        }
+      }
+      if (maxChainValue > 0) {
+        // Bonus for having this intermediate product
+        intermediateProductionBonus += quantity * (maxChainValue / 1000); // Much stronger bonus - scale by chain value / 1000
+      }
+    }
+  }
+
+  fitness += intermediateProductionBonus;
+
   // Penalty for no execution
   if (fitness === 0 && executionLog.length === 0) {
     fitness = -1e9;
