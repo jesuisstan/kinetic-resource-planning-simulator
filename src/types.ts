@@ -1,33 +1,39 @@
-export type Stock = {
-  readonly name: string;
-  readonly quantity: number;
-};
+export interface Stock {
+  [key: string]: number;
+}
 
-export type Process = {
-  readonly name: string;
-  readonly inputs: ReadonlyMap<string, number>;
-  readonly outputs: ReadonlyMap<string, number>;
-  readonly nbCycle: number;
-};
+export interface Process {
+  name: string;
+  need: Stock;
+  result: Stock;
+  delay: number;
+  startCycle?: number;
+}
 
-export type Config = {
-  readonly processes: readonly Process[];
-  readonly stocks: readonly Stock[];
-  readonly optimizeGoals: readonly string[];
-};
+export interface ProcessList {
+  [key: string]: Process;
+}
 
-export type Individual = {
-  readonly processSequence: readonly string[];
-  fitnessScore: number; // Not readonly since we need to update this
-};
+export interface InstructionDict {
+  [key: string]: number;
+}
 
-export type SimulationResult = {
-  readonly finalStocks: ReadonlyMap<string, number>;
-  readonly executionLog: ReadonlyArray<[number, string]>;
-  readonly finalCycle: number;
-  readonly fitness: number;
-  readonly timeoutReached: boolean;
-};
+export interface GoodInstruction {
+  cycle: number;
+  processes: string[];
+}
 
-// Pure functions for state management
-export type StockState = Map<string, number>;
+export interface TodoList {
+  [cycle: number]: string[];
+}
+
+export interface SimulationConfig {
+  maxCycle: number;
+  maxDelay: number;
+  maxInstructions: number;
+  maxGenerations: number;
+  fileName: string;
+  optimizationTarget: string;
+  stock: Stock;
+  processList: ProcessList;
+}

@@ -1,30 +1,32 @@
 {
   "name": "kinetic-resource-planning-simulator",
   "version": "1.0.0",
-  "description": "Kinetic Resource Planning Simulator in TypeScript",
+  "description": "TypeScript implementation of krpsim resource planning simulator",
   "main": "dist/krpsim.js",
   "scripts": {
-    "clean": "rm -rf dist/ logs_*.txt",
-    "clean-full": "rm -rf dist/ node_modules/ package-lock.json logs_*.txt",
     "build": "tsc",
-    "rebuild": "rm -rf node_modules/ package-lock.json && npm run clean && npm install && npm run build",
-    "krpsim": "node --max-old-space-size=8192 dist/krpsim.js",
-    "verify": "node dist/krpsim_verif.js",
+    "krpsim": "node dist/krpsim.js",
+    "krpsim_verif": "node dist/krpsim_verif.js",
     "dev": "ts-node src/krpsim.ts",
-    "debug-optimal": "ts-node src/debug_optimal_chain.ts",
-    "debug-economic": "ts-node src/debug_economic_analysis.ts",
-    "test-simple": "npm run build && npm run krpsim -- resources/simple 200 && npm run krpsim -- resources/ikea 200 && npm run krpsim -- resources/steak 200 && npm run krpsim -- resources/recre 5000"
+    "clean": "rm -rf dist/ resources/*.log",
+    "clean_all": "rm -rf dist/ resources/*.log node_modules/ package-lock.json"
+  },
+  "dependencies": {
+    "yargs": "^17.7.2",
+    "cli-progress": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/yargs": "^17.0.32",
+    "@types/cli-progress": "^3.11.5",
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.0"
   },
   "keywords": [
     "krpsim",
-    "genetic-algorithm",
-    "resource-planning"
+    "resource-planning",
+    "simulator"
   ],
   "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^24.3.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
-  }
+  "license": "MIT"
 }

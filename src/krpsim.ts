@@ -1,222 +1,280 @@
-import { Config } from './types';
-import { evolvePopulation } from './geneticAlgorithm';
-import { runSimulation } from './simulator';
-import { Parser } from './parser';
+import * as yargs from 'yargs';
+import * as cliProgress from 'cli-progress';
 import * as fs from 'fs';
+import * as path from 'path';
+import { MainWalk } from './MainWalk';
+import { StockManager, ProcessInitializer, ErrorManager } from './utils';
+import { Stock, ProcessList, SimulationConfig } from './types';
 
-function main() {
-  if (process.argv.length < 4) {
-    console.error('⚠️ Usage: npm run krpsim -- <filename> <delay>');
-    process.exit(1);
+class Simulation {
+  private stock: Stock = {};
+  private processList: ProcessList = {};
+  private optimizationTarget = '';
+  private goodInstructions: any[] = [];
+  private startTime: number;
+  private fileName = '';
+  private maxCycle = 10000;
+  private maxDelay = 0;
+  private maxInstructions = 10000;
+  private maxGenerations = 1000;
+
+  constructor(startTime: number) {
+    this.startTime = startTime;
   }
 
-  const filePath = process.argv[2];
-  const timeLimit = parseInt(process.argv[3]);
+  private argumentParser(): void {
+    const argv = yargs
+      .option('c', {
+        alias: 'cycle',
+        type: 'number',
+        default: 10000,
+        describe: 'max number of cycle'
+      })
+      .option('p', {
+        alias: 'process',
+        type: 'number',
+        default: 1000,
+        describe: 'max number of process'
+      })
+      .option('i', {
+        alias: 'instructions',
+        type: 'number',
+        default: 10000,
+        describe: 'max number of instructions allowed during process generation'
+      })
+      .help()
+      .parseSync();
 
-  // Check if file exists
-  if (!fs.existsSync(filePath)) {
-    console.error(`❌ Error: Configuration file '${filePath}' not found.`);
-    console.error(`💡 Please check the file path and try again.`);
-    process.exit(1);
-  }
+    const file = argv._[0] as string;
+    const delay = argv._[1] as number;
 
-  if (isNaN(timeLimit) || timeLimit <= 0) {
-    console.error('❌ Error: Delay must be a positive integer.');
-    process.exit(1);
-  }
-
-  const parser = new Parser();
-
-  let config: Config;
-  try {
-    config = parser.parse(filePath);
-  } catch (error) {
-    console.error(
-      `❌ Error: Failed to parse configuration file '${filePath}'.`
-    );
-    console.error(
-      `💡 Please check if the file is a valid KRPSIM configuration.`
-    );
-    console.error(
-      `🔧 Error details: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }`
-    );
-    process.exit(1);
-  }
-
-  console.log('🤖 KRPSIM - Kinetic Resource Planning Simulator');
-  console.log('='.repeat(60));
-
-  console.log('🔍 ANALYSING FILE...\n');
-  console.log(`📁 Scenario: ${filePath}`);
-  console.log(`⏱️  Time limit: ${timeLimit}`);
-  console.log(`🎯 Optimization goals: ${config.optimizeGoals.join(', ')}`);
-
-  // Analysis of initial resources
-  console.log('📦 Initial resources:');
-  for (const stock of config.stocks) {
-    console.log(`  ${stock.name}: ${stock.quantity}`);
-  }
-
-  // Analysis of processes
-  console.log('⚙️  Available processes:');
-  for (const process of config.processes) {
-    const inputs = Array.from(process.inputs.entries())
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    const outputs = Array.from(process.outputs.entries())
-      .map(([k, v]) => `${k}:${v}`)
-      .join(', ');
-    console.log(`  ${process.name}:`);
-    console.log(`    🔽 Inputs: ${inputs}`);
-    console.log(`    🔼 Outputs: ${outputs}`);
-    console.log(`    ⏰ Duration: ${process.nbCycle} cycles`);
-    console.log();
-  }
-
-  console.log('='.repeat(60));
-  console.log('🧬 EVALUATING USING GENETIC ALGORITHM...\n');
-
-  // Analyze problem complexity
-  const processCount = config.processes.length;
-  const stockCount = config.stocks.length;
-  const goalCount = config.optimizeGoals.length;
-  const hasCyclicProcesses = config.processes.some((p: any) => {
-    const outputs = new Set(p.outputs.keys());
-    return Array.from(p.inputs.keys()).some((input) => outputs.has(input));
-  });
-
-  // Calculate complexity score
-  const complexityScore = Math.min(
-    100,
-    processCount * 10 +
-      stockCount * 5 +
-      goalCount * 10 +
-      (hasCyclicProcesses ? 20 : 0)
-  );
-
-  console.log(`📊 Complexity Score: ${complexityScore}/100`);
-
-  // Calculate parameters based on complexity (increased for better exploration)
-  const generations = Math.max(
-    200,
-    Math.min(600, Math.floor(complexityScore * 6))
-  );
-  const populationSize = Math.max(
-    150,
-    Math.min(600, Math.floor(complexityScore * 6))
-  );
-  const mutationRate = Math.min(0.2, 0.08 + complexityScore * 0.001);
-  const crossoverRate = Math.max(
-    0.75,
-    Math.min(0.95, 0.75 + complexityScore * 0.002)
-  );
-  const eliteCount = Math.max(15, Math.floor(populationSize * 0.15));
-  const minSequenceLength = Math.max(15, Math.floor(processCount * 1.2));
-  const maxSequenceLength = Math.min(150, processCount * 4); // Increased for complex chains
-
-  console.log('🧬 Genetic Algorithm Parameters:');
-  console.log(`  🔄 Generations: ${generations}`);
-  console.log(`  👥 Population Size: ${populationSize}`);
-  console.log(`  🎲 Mutation Rate: ${mutationRate}`);
-  console.log(`  🔀 Crossover Rate: ${crossoverRate}`);
-  console.log(`  ⭐ Elite Count: ${eliteCount}`);
-  console.log(`  📏 Min Sequence Length: ${minSequenceLength}`);
-  console.log(`  📏 Max Sequence Length: ${maxSequenceLength}`);
-  console.log('='.repeat(60));
-
-  const bestIndividual = evolvePopulation(
-    config,
-    timeLimit,
-    generations,
-    populationSize,
-    mutationRate,
-    crossoverRate,
-    eliteCount,
-    minSequenceLength,
-    maxSequenceLength,
-    complexityScore
-  );
-
-  const result = runSimulation(
-    config,
-    bestIndividual.processSequence,
-    timeLimit
-  );
-
-  console.log('='.repeat(60));
-  console.log('🚶 Main walk...');
-  if (result.executionLog.length === 0) {
-    console.log('(No processes executed)');
-  } else {
-    // todo uncomment later
-    //for (const [cycle, processName] of result.executionLog) {
-    //  console.log(`${cycle}:${processName}`);
-    //}
-
-    // Write to logs file with scenario-specific name
-    const fileName =
-      filePath.split('/').pop()?.replace('.krpsim', '') || 'unknown';
-    const logsFilePath = `logs_${fileName}.txt`;
-    try {
-      const traceContent = result.executionLog
-        .map(([cycle, processName]) => `${cycle}:${processName}`)
-        .join('\n');
-      fs.writeFileSync(logsFilePath, traceContent);
-      console.log(`\n(Logged into file: ${logsFilePath})`);
-    } catch (error) {
-      console.error(`❌ Warning: Could not write to file '${logsFilePath}'`);
+    if (!file || typeof delay !== 'number') {
+      console.error('Usage: krpsim <file> <delay>');
+      process.exit(1);
     }
+
+    this.fileName = path.basename(file);
+    this.maxCycle = argv.c;
+    this.maxDelay = delay;
+    this.maxInstructions = argv.i;
+    this.maxGenerations = argv.p;
+
+    if (this.maxGenerations < 1) {
+      ErrorManager.errorType('bad_processes');
+    }
+
+    this.optimizationTarget = ProcessInitializer.readProcessFile(
+      file,
+      this.stock,
+      this.processList
+    );
   }
 
-  console.log('='.repeat(60));
+  private execute(): MainWalk {
+    const deltaTime = Date.now() - this.startTime;
+    const progressBar = new cliProgress.SingleBar({
+      format: 'Making process |{bar}| {percentage}%',
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      hideCursor: true
+    });
 
-  if (result.executionLog.length === 0) {
+    progressBar.start(this.maxGenerations, 0);
+    progressBar.increment();
+
+    let mainWalkInstance = new MainWalk(
+      this.stock,
+      this.optimizationTarget,
+      this.processList,
+      this.maxCycle,
+      this.maxInstructions,
+      this.maxDelay
+    );
+
+    for (let i = 0; i < this.maxGenerations - 1; i++) {
+      const deltaTime = Date.now() - this.startTime;
+      if (deltaTime > this.maxDelay * 1000) {
+        // Convert to milliseconds
+        break;
+      }
+      progressBar.increment();
+
+      const newMainWalk = new MainWalk(
+        this.stock,
+        this.optimizationTarget,
+        this.processList,
+        this.maxCycle,
+        this.maxInstructions,
+        this.maxDelay
+      );
+
+      if (newMainWalk.loop > mainWalkInstance.loop) {
+        mainWalkInstance = newMainWalk;
+      } else if (
+        newMainWalk.loop === mainWalkInstance.loop &&
+        newMainWalk.score >= mainWalkInstance.score
+      ) {
+        if (
+          newMainWalk.score === mainWalkInstance.score &&
+          newMainWalk.created <= mainWalkInstance.created
+        ) {
+          // Keep current instance
+        } else {
+          mainWalkInstance = newMainWalk;
+        }
+      }
+    }
+
+    progressBar.stop();
+    return mainWalkInstance;
+  }
+
+  private displayParsing(): void {
+    console.log('\n🤖 KRPSIM - Kinetic Resource Planning Simulator');
+    console.log('============================================================');
+    console.log('🔍 ANALYSING FILE...\n');
+
+    // File info
+    console.log(`📁 Scenario: ${this.fileName}`);
+    console.log(`⏱️  Time limit: ${this.maxDelay}`);
+    console.log(`🎯 Optimization target: ${this.optimizationTarget}`);
+
+    // Initial resources
+    console.log('📦 Initial resources:');
+    for (const [resource, amount] of Object.entries(this.stock)) {
+      if (amount > 0) {
+        console.log(`  ${resource}: ${amount}`);
+      }
+    }
+
+    // Available processes
+    console.log('\n⚙️  Available processes:');
+    for (const [processName, process] of Object.entries(this.processList)) {
+      console.log(`  ${processName}:`);
+
+      // Inputs
+      if (Object.keys(process.need).length > 0) {
+        const inputs = Object.entries(process.need)
+          .map(([item, qty]) => `${item}:${qty}`)
+          .join(', ');
+        console.log(`    🔽 Inputs: ${inputs}`);
+      }
+
+      // Outputs
+      if (Object.keys(process.result).length > 0) {
+        const outputs = Object.entries(process.result)
+          .map(([item, qty]) => `${item}:${qty}`)
+          .join(', ');
+        console.log(`    🔼 Outputs: ${outputs}`);
+      }
+
+      // Duration
+      console.log(`    ⏰ Duration: ${process.delay} cycles`);
+      console.log('');
+    }
+
+    console.log('============================================================');
+  }
+
+  private displayResult(mainWalkInstance: MainWalk): void {
+    let result = '';
+    const diffStock = this.stockDifference(mainWalkInstance);
+    let i = 0;
+
+    while (
+      mainWalkInstance.goodInstructions[0].processes.length &&
+      mainWalkInstance.goodInstructions[
+        mainWalkInstance.goodInstructions.length - 1
+      ].cycle *
+        (i + 1) <=
+        this.maxDelay &&
+      this.updateStock(diffStock)
+    ) {
+      for (const cycle of mainWalkInstance.goodInstructions) {
+        for (const element of cycle.processes) {
+          result += `${
+            cycle.cycle +
+            mainWalkInstance.goodInstructions[
+              mainWalkInstance.goodInstructions.length - 1
+            ].cycle *
+              i
+          }:${element}\n`;
+        }
+      }
+      i++;
+
+      const deltaTime = Date.now() - this.startTime;
+      if (deltaTime > this.maxDelay * 1000) {
+        break;
+      }
+    }
+
+    const endTime = Date.now() - this.startTime;
+
+    mainWalkInstance.displayProcess();
     console.log(
-      `❌ No process could be executed within the time limit (${timeLimit}).`
+      `\n⏹️  Simulation stopped at cycle ${
+        mainWalkInstance.goodInstructions[
+          mainWalkInstance.goodInstructions.length - 1
+        ].cycle *
+          i +
+        1
+      }\n`
     );
-  } else if (!result.timeoutReached && result.finalCycle < timeLimit) {
-    console.log(`✅ No more process doable at time ${result.finalCycle + 1}`);
-  } else {
-    console.log(`⏰ Simulation reached time limit at cycle ${timeLimit}.`);
+
+    console.log('📊 FINAL RESULTS:');
+    console.log('============================================================');
+    StockManager.printStock(this.stock, '📦 Final resources:');
+    console.log(`⏱️  Execution time: ${endTime / 1000}s`);
+    console.log('============================================================');
+
+    const csvPath = `resources/${this.fileName}.log`;
+    result += `${
+      mainWalkInstance.goodInstructions[
+        mainWalkInstance.goodInstructions.length - 1
+      ].cycle *
+        i +
+      1
+    }:no_more_process_doable\n`;
+    fs.writeFileSync(csvPath, result, 'utf-8');
   }
 
-  console.log('='.repeat(60));
-
-  console.log('📦 Final Stocks:');
-  const allStockNames = new Set<string>();
-  for (const stock of config.stocks) {
-    allStockNames.add(stock.name);
-  }
-  for (const process of config.processes) {
-    for (const [resource] of process.inputs) {
-      allStockNames.add(resource);
+  private stockDifference(mainWalkInstance: MainWalk): Stock {
+    const diffStock: Stock = {};
+    for (const [key, value] of Object.entries(this.stock)) {
+      const diff = (mainWalkInstance as any).updatedStock[key] - value;
+      if (diff) {
+        diffStock[key] = diff;
+      }
     }
-    for (const [resource] of process.outputs) {
-      allStockNames.add(resource);
-    }
+    return diffStock;
   }
 
-  for (const stockName of Array.from(allStockNames).sort()) {
-    const initial =
-      config.stocks.find((s) => s.name === stockName)?.quantity || 0;
-    const final = result.finalStocks.get(stockName) || 0;
-    const change = final - initial;
-    const changeStr = change > 0 ? `+${change}` : change.toString();
-    console.log(`  ${stockName}: ${initial} → ${final} (${changeStr})`);
+  private updateStock(diffStock: Stock): boolean {
+    for (const [key, value] of Object.entries(diffStock)) {
+      const currentStock = this.stock[key] || 0;
+      if (currentStock + value < 0) {
+        return false;
+      }
+      this.stock[key] = currentStock + value;
+    }
+    return true;
   }
 
-  console.log('\n🎯 ANALYSIS OF GOAL ACHIEVEMENT:');
-  for (const goal of config.optimizeGoals) {
-    if (goal !== 'time') {
-      const initial = config.stocks.find((s) => s.name === goal)?.quantity || 0;
-      const final = result.finalStocks.get(goal) || 0;
-      const produced = final - initial;
-      console.log(`  ${goal}: produced ${produced} units`);
-    }
+  public run(): void {
+    this.argumentParser();
+    this.displayParsing();
+    const mainWalkInstance = this.execute();
+    this.displayResult(mainWalkInstance);
+    process.exit(0);
   }
-  console.log('='.repeat(60));
 }
 
-main();
+function main(): void {
+  const simulation = new Simulation(Date.now());
+  simulation.run();
+}
+
+if (require.main === module) {
+  main();
+}

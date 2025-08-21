@@ -1,207 +1,160 @@
 # Kinetic Resource Planning Simulator
 
-A TypeScript implementation of a resource planning and optimization system that simulates and optimizes process chains based on resource constraints.
+TypeScript implementation of the resource planning simulator (krpsim) for Ecole42 project.
 
-## Overview
-
-The simulator takes a configuration file describing:
-
-- Initial resource stocks
-- Available processes with their inputs, outputs, and delays
-- Optimization goals (time and/or specific resources)
-
-It then produces an optimized execution plan that maximizes the specified goals while respecting resource constraints.
-
-## Features
-
-- Parallel process execution when resources allow
-- Resource dependency tracking and optimization
-- Time and resource optimization
-- Comprehensive input validation
-- Process chain verification
-- Detailed execution logs
-
-## Installation
-
-Install dependencies:
+## Installation and Build
 
 ```bash
+# Install dependencies
 npm install
-```
 
-Build the project:
-
-```bash
+# Build project
 npm run build
+
+# Run in development mode
+npm run dev
 ```
 
-## Usage
+## Running the Program
 
-### Running the Simulator
-
-Basic usage:
+### Main krpsim Program
 
 ```bash
-npm run krpsim -- <config_file> <max_delay>
+# Built version
+node dist/krpsim.js <configuration_file> <max_time>
+
+# Development mode
+npm run dev resources/simple 10
 ```
 
-Example:
+Examples:
 
 ```bash
-npm run krpsim -- resources/simple 1000
+# Simple configuration
+node dist/krpsim.js resources/simple 10
+
+# Steak configuration
+node dist/krpsim.js resources/steak 30
+
+# IKEA configuration
+node dist/krpsim.js resources/ikea 50
+
+# Self-sustaining configuration
+node dist/krpsim.js resources/recre 100
+
+# Apple configuration
+node dist/krpsim.js resources/pomme 1000
+
+# Nested processes configuration
+node dist/krpsim.js resources/inception 100
 ```
 
-### Running the Verifier
-
-Basic usage:
+### krpsim_verif Verification Program
 
 ```bash
-npm run verify -- <config_file> <trace_file>
+# Using npm script
+npm run krpsim_verif resources/simple resources/simple.log
+
+# Or directly
+node dist/krpsim_verif.js resources/simple resources/simple.log
 ```
 
-Example:
+Examples:
 
 ```bash
-npm run verify -- resources/simple output.txt
+# Verify simple configuration
+npm run krpsim_verif resources/simple resources/simple.log
+
+# Verify apple configuration
+npm run krpsim_verif resources/pomme resources/pomme.log
 ```
 
-### Additional Scripts
+## Command Line Parameters
 
-Clean build artifacts and logs:
+### krpsim.js
+
+- `file` - configuration file (required)
+- `delay` - maximum execution time in seconds (required)
+- `-c, --cycle` - maximum number of cycles (default: 10000)
+- `-p, --process` - maximum number of processes (default: 1000)
+- `-i, --instructions` - maximum number of instructions (default: 10000)
+
+### krpsim_verif.js
+
+- `file` - configuration file (required)
+- `trace.log` - result file for verification (required, .log extension)
+
+## NPM Scripts
 
 ```bash
-npm run clean
+# Main commands
+npm run build          # Build project
+npm run dev            # Run in development mode
+npm run clean          # Remove build files and .log files
+npm run clean_all      # Remove build files, .log files, node_modules and package-lock.json
+npm run krpsim_verif   # Run verifier
 ```
 
-Complete rebuild (clean + reinstall + build):
+## Project Structure
 
-```bash
-npm run rebuild
-```
+- `src/types.ts` - TypeScript types and interfaces
+- `src/utils.ts` - utilities for stocks, processes and errors
+- `src/MainWalk.ts` - main simulation class
+- `src/krpsim.ts` - main simulator program
+- `src/krpsim_verif.ts` - result verification program
+- `resources/` - configuration files folder
+- `dist/` - compiled JavaScript files
 
-## Configuration File Format
+## Configuration Files
 
-The configuration file uses a simple text format:
+- `simple` - simple process chain (buy material → produce → deliver)
+- `steak` - steak cooking (should take 30 cycles)
+- `ikea` - IKEA furniture assembly
+- `recre` - self-sustaining system
+- `pomme` - complex configuration with apples and pies
+- `inception` - configuration with nested processes (hours and seconds)
 
-```
-# Comments start with #
+## Output Files
 
-# Initial stocks (required)
-stock_name:quantity
-
-# Process definitions (at least one required)
-process_name:(need1:qty1;need2:qty2):(result1:qty1;result2:qty2):delay
-
-# Optimization goals (required)
-optimize:(time|stock1;time|stock2;...)
-```
-
-Example:
+The program creates .log files with execution results in the `resources/` folder in format:
 
 ```
-# Initial stock
-euro:10
-
-# Processes
-equipment_purchase:(euro:8):(equipment:1):10
-product_creation:(equipment:1):(product:1):30
-delivery:(product:1):(happy_client:1):20
-
-# Optimize for time and happy clients
-optimize:(time;happy_client)
+<cycle>:<process_name>
 ```
 
-## Input Validation
+These files can be used for verification with `krpsim_verif.js`.
 
-The parser performs comprehensive validation of input files:
+## Implementation Features
 
-1. Stock Validation
+### Beautiful Output
 
-   - No duplicate stock names
-   - No negative initial quantities
-   - At least one stock must be defined
+The program provides detailed and structured output:
 
-2. Process Validation
+- 🔍 Configuration file analysis
+- 🚀 Process execution plan
+- 📊 Final results
+- ✅ Verification results
 
-   - Unique process names
-   - All required resources must exist
-   - Valid process delays
-   - At least one process must be defined
+### Universality
 
-3. Optimization Validation
-   - All optimization targets must exist
-   - Valid optimization format
+- Code contains no hardcoded processes or resources
+- All processes and resources are read from configuration files
+- Supports any process and resource names
 
-## Algorithm Description
+### Algorithm
 
-The simulator uses a genetic algorithm approach to find optimal solutions:
+Uses a hybrid approach:
 
-```mermaid
-graph TD
-    A[Input Configuration] --> B[Parse & Validate]
-    B --> C[Initialize Population]
-    C --> D[Evolution Loop]
-    D --> E[Evaluate Fitness]
-    E --> F[Selection]
-    F --> G[Crossover]
-    G --> H[Mutation]
-    H --> I{Stop Condition?}
-    I -->|No| D
-    I -->|Yes| J[Best Solution]
+- Genetic algorithm for optimization
+- Reverse planning (backtracking)
+- Greedy/random process selection
+- Discrete event simulation
 
-    subgraph "Solution Evaluation"
-    E1[Calculate Resource Usage]
-    E2[Check Time Constraints]
-    E3[Verify Process Dependencies]
-    E1 --> E2 --> E3
-    end
-```
+## TypeScript Version Advantages
 
-1. **Population Initialization**
-
-   - Creates initial set of possible solutions
-   - Each solution represents a sequence of process executions
-   - Initial solutions are created with consideration of resource constraints
-
-2. **Evolution Process**
-
-   - Solutions are evaluated based on optimization goals
-   - Best solutions are selected for reproduction
-   - New solutions are created through crossover and mutation
-   - Process repeats until optimal solution is found or time limit reached
-
-3. **Solution Evaluation**
-   - Calculates resource usage throughout process chain
-   - Verifies time constraints and process dependencies
-   - Considers optimization goals (time and/or specific resources)
-
-The implementation uses standard genetic algorithm parameters that have been proven effective for resource optimization problems:
-
-- Population size: 100 individuals
-- Smart individuals ratio: 80%
-- Mutation rate: 10%
-
-For detailed explanation of genetic algorithms and their application to resource optimization, see:
-https://www.optimization101.org/genetic-algorithms-in-resource-optimization
-
-## Test Cases
-
-### Valid Scenarios
-
-- `resources/simple` - Linear process chain
-- `resources/ikea` - Parallel processes
-- `resources/steak` - Complex dependencies
-
-### Invalid Scenarios
-
-- `resources/invalid/no_stocks` - Missing initial stocks
-- `resources/invalid/unknown_need` - Unknown resource requirements
-- `resources/invalid/unknown_optimize` - Invalid optimization target
-- `resources/invalid/duplicate_process` - Duplicate process names
-- `resources/invalid/duplicate_stock` - Duplicate stock names
-- `resources/invalid/negative_stock` - Negative initial quantities
-- `resources/invalid/no_processes` - No processes defined
-
-## License
-
-MIT License - see LICENSE file for details
+- **Strong typing** - all interfaces and types are defined
+- **Better performance** - compiles to optimized JavaScript
+- **Modern syntax** - ES2020+ capabilities
+- **Easier maintenance** - TypeScript helps avoid errors at compile time
+- **Better IDE support** - autocomplete and type checking
+- **Convenient npm scripts** - for building, cleaning and running
