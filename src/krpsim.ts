@@ -98,23 +98,46 @@ function main() {
 
   console.log(`📊 Complexity Score: ${complexityScore}/100`);
 
-  // Calculate parameters based on complexity (increased for better exploration)
-  const generations = Math.max(
-    200,
-    Math.min(600, Math.floor(complexityScore * 6))
-  );
-  const populationSize = Math.max(
-    150,
-    Math.min(600, Math.floor(complexityScore * 6))
-  );
-  const mutationRate = Math.min(0.2, 0.08 + complexityScore * 0.001);
-  const crossoverRate = Math.max(
-    0.75,
-    Math.min(0.95, 0.75 + complexityScore * 0.002)
-  );
-  const eliteCount = Math.max(15, Math.floor(populationSize * 0.15));
-  const minSequenceLength = Math.max(15, Math.floor(processCount * 1.2));
-  const maxSequenceLength = Math.min(150, processCount * 4); // Increased for complex chains
+  // Calculate parameters based on complexity (optimized for complex cases)
+  let generations,
+    populationSize,
+    mutationRate,
+    crossoverRate,
+    eliteCount,
+    minSequenceLength,
+    maxSequenceLength;
+
+  if (complexityScore > 80) {
+    // For very complex cases like inception and pomme, use balanced parameters
+    generations = Math.max(200, Math.min(400, Math.floor(complexityScore * 4)));
+    populationSize = Math.max(
+      200,
+      Math.min(400, Math.floor(complexityScore * 4))
+    );
+    mutationRate = Math.min(0.15, 0.08 + complexityScore * 0.0008);
+    crossoverRate = Math.max(
+      0.75,
+      Math.min(0.9, 0.75 + complexityScore * 0.0015)
+    );
+    eliteCount = Math.max(30, Math.floor(populationSize * 0.15));
+    minSequenceLength = Math.max(10, Math.floor(processCount * 0.8));
+    maxSequenceLength = Math.min(80, processCount * 2.5); // Balanced for quality
+  } else {
+    // For simpler cases, use original parameters
+    generations = Math.max(200, Math.min(600, Math.floor(complexityScore * 6)));
+    populationSize = Math.max(
+      150,
+      Math.min(600, Math.floor(complexityScore * 6))
+    );
+    mutationRate = Math.min(0.2, 0.08 + complexityScore * 0.001);
+    crossoverRate = Math.max(
+      0.75,
+      Math.min(0.95, 0.75 + complexityScore * 0.002)
+    );
+    eliteCount = Math.max(15, Math.floor(populationSize * 0.15));
+    minSequenceLength = Math.max(15, Math.floor(processCount * 1.2));
+    maxSequenceLength = Math.min(150, processCount * 4);
+  }
 
   console.log('🧬 Genetic Algorithm Parameters:');
   console.log(`  🔄 Generations: ${generations}`);
@@ -151,9 +174,9 @@ function main() {
     console.log('(No processes executed)');
   } else {
     // todo uncomment later
-    //for (const [cycle, processName] of result.executionLog) {
-    //  console.log(`${cycle}:${processName}`);
-    //}
+    for (const [cycle, processName] of result.executionLog) {
+      console.log(`${cycle}:${processName}`);
+    }
 
     // Write to logs file with scenario-specific name
     const fileName =
