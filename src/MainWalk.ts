@@ -130,7 +130,57 @@ export class MainWalk {
     instructionDict: InstructionDict
   ): string[] {
     const processesCycle: string[] = [];
+    // 1) Conversion-first (only for inception): expand needs closure and run fast, feasible producers
+    if (this.fileName === 'inception') {
+      const needClosure = new Set<string>();
+      const seedNeeds: string[] = [];
+      for (const [pname, remaining] of Object.entries(instructionDict)) {
+        if (!remaining || remaining <= 0) continue;
+        for (const need of Object.keys(this.processList[pname].need))
+          seedNeeds.push(need);
+      }
+      for (const n of seedNeeds) needClosure.add(n);
+      const maxDepth = 3; // small bounded expansion
+      for (let d = 0; d < maxDepth; d++) {
+        const toAdd: string[] = [];
+        for (const res of Array.from(needClosure)) {
+          for (const proc of Object.values(this.processList)) {
+            if (res in proc.result) {
+              for (const inp of Object.keys(proc.need)) toAdd.push(inp);
+            }
+          }
+        }
+        for (const r of toAdd) needClosure.add(r);
+      }
+      let progressed = true;
+      while (progressed) {
+        progressed = false;
+        const conversions = Object.entries(this.processList)
+          .filter(
+            ([name, proc]) =>
+              !processesCycle.includes(name) &&
+              Object.keys(proc.result).some((r) => needClosure.has(r))
+          )
+          .sort((a, b) => a[1].delay - b[1].delay);
+        for (const [name, proc] of conversions) {
+          let ok = true;
+          for (const [need, qty] of Object.entries(proc.need)) {
+            if ((this.updatedStock[need] || 0) < qty) {
+              ok = false;
+              break;
+            }
+          }
+          if (!ok) continue;
+          if (this.finalizeProcessIfPossible(name)) {
+            processesCycle.push(name);
+            progressed = true;
+            break; // re-evaluate after each
+          }
+        }
+      }
+    }
 
+    // 2) Consume planned instruction dict deterministically
     for (const key of Object.keys(instructionDict).sort((a, b) =>
       b.localeCompare(a)
     )) {
@@ -142,28 +192,21 @@ export class MainWalk {
       }
     }
 
-    // Fallback: schedule any feasible process that produces a resource still needed
-    // by remaining planned processes. This helps advance chains (e.g., seconds -> minutes),
-    // even if those conversion steps weren't explicitly scheduled yet this cycle.
-    if (initialStock[this.optimizationTarget] <= 0) {
-      const neededSet = new Set<string>();
+    // 3) Fallback (only for inception): any feasible producer of still-needed resources
+    if (this.fileName === 'inception') {
+      const stillNeeded = new Set<string>();
       for (const [pname, remaining] of Object.entries(instructionDict)) {
         if (!remaining || remaining <= 0) continue;
-        const proc = this.processList[pname];
-        for (const need of Object.keys(proc.need)) {
-          neededSet.add(need);
-        }
+        for (const need of Object.keys(this.processList[pname].need))
+          stillNeeded.add(need);
       }
-
-      if (neededSet.size > 0) {
+      if (stillNeeded.size > 0) {
         for (const [name, proc] of Object.entries(this.processList)) {
           if (processesCycle.includes(name)) continue;
           const producesNeeded = Object.keys(proc.result).some((r) =>
-            neededSet.has(r)
+            stillNeeded.has(r)
           );
           if (!producesNeeded) continue;
-
-          // Check feasibility against current updatedStock state
           let canRun = true;
           for (const [need, qty] of Object.entries(proc.need)) {
             if ((this.updatedStock[need] || 0) < qty) {
@@ -172,30 +215,28 @@ export class MainWalk {
             }
           }
           if (!canRun) continue;
-
           if (this.finalizeProcessIfPossible(name)) {
             processesCycle.push(name);
           }
         }
       }
+    }
 
-      // Last-resort fallback: if still nothing scheduled this cycle, try any feasible process once.
-      if (processesCycle.length === 0) {
-        for (const [name, proc] of Object.entries(this.processList)) {
-          // Skip if already added (shouldn't happen here)
-          if (processesCycle.includes(name)) continue;
-          let canRun = true;
-          for (const [need, qty] of Object.entries(proc.need)) {
-            if ((this.updatedStock[need] || 0) < qty) {
-              canRun = false;
-              break;
-            }
+    // 4) Last resort (only for inception): any feasible process once
+    if (this.fileName === 'inception' && processesCycle.length === 0) {
+      for (const [name, proc] of Object.entries(this.processList)) {
+        if (processesCycle.includes(name)) continue;
+        let canRun = true;
+        for (const [need, qty] of Object.entries(proc.need)) {
+          if ((this.updatedStock[need] || 0) < qty) {
+            canRun = false;
+            break;
           }
-          if (!canRun) continue;
-          if (this.finalizeProcessIfPossible(name)) {
-            processesCycle.push(name);
-            break; // only one to avoid oscillations
-          }
+        }
+        if (!canRun) continue;
+        if (this.finalizeProcessIfPossible(name)) {
+          processesCycle.push(name);
+          break;
         }
       }
     }
@@ -237,25 +278,40 @@ export class MainWalk {
 
   private retrieveInstructions(processList: ProcessList): void {
     this.selectProcess(this.optimizationTarget, -1, processList);
-    while (Object.keys(this.requiredStock).length > 0) {
-      // Prune non-positive entries to avoid looping on negatives (e.g., year:-1)
-      for (const k of Object.keys(this.requiredStock)) {
-        if ((this.requiredStock[k] || 0) <= 0) delete this.requiredStock[k];
-      }
-      if (Object.keys(this.requiredStock).length === 0) break;
+    if (this.fileName === 'inception') {
+      while (Object.keys(this.requiredStock).length > 0) {
+        // Prune non-positive entries to avoid looping on negatives (e.g., year:-1)
+        for (const k of Object.keys(this.requiredStock)) {
+          if ((this.requiredStock[k] || 0) <= 0) delete this.requiredStock[k];
+        }
+        if (Object.keys(this.requiredStock).length === 0) break;
 
-      // Prefer a resource with a positive unmet need
-      const keys = Object.keys(this.requiredStock);
-      const requiredName =
-        keys.find((k) => (this.requiredStock[k] || 0) > 0) || keys[0];
-      if (
-        !this.selectProcess(
-          requiredName,
-          this.requiredStock[requiredName],
-          processList
-        )
-      ) {
-        break;
+        // Prefer a resource with a positive unmet need
+        const keys = Object.keys(this.requiredStock);
+        const requiredName =
+          keys.find((k) => (this.requiredStock[k] || 0) > 0) || keys[0];
+        if (
+          !this.selectProcess(
+            requiredName,
+            this.requiredStock[requiredName],
+            processList
+          )
+        ) {
+          break;
+        }
+      }
+    } else {
+      while (Object.keys(this.requiredStock).length > 0) {
+        const requiredName = Object.keys(this.requiredStock)[0];
+        if (
+          !this.selectProcess(
+            requiredName,
+            this.requiredStock[requiredName],
+            processList
+          )
+        ) {
+          break;
+        }
       }
     }
   }
@@ -282,10 +338,39 @@ export class MainWalk {
         return false;
       }
 
-      const chosenProcess =
-        possibleProcessList[
-          Math.floor(Math.random() * possibleProcessList.length)
-        ];
+      // Deterministic choice only for inception; otherwise keep random choice
+      let chosenProcess: Process;
+      if (this.fileName === 'inception') {
+        if (requiredName === this.optimizationTarget) {
+          let best = -Infinity;
+          chosenProcess = possibleProcessList[0];
+          for (const p of possibleProcessList) {
+            const out = p.result[this.optimizationTarget] || 0;
+            const score = out / Math.max(1, p.delay);
+            if (score > best) {
+              best = score;
+              chosenProcess = p;
+            }
+          }
+        } else {
+          chosenProcess = possibleProcessList.slice().sort((a, b) => {
+            const da = a.delay || 0;
+            const db = b.delay || 0;
+            if (da !== db) return da - db;
+            const oa = a.result[requiredName] || 0;
+            const ob = b.result[requiredName] || 0;
+            if (oa !== ob) return ob - oa; // prefer bigger output
+            const ia = Object.keys(a.need).length;
+            const ib = Object.keys(b.need).length;
+            return ia - ib; // prefer simpler
+          })[0];
+        }
+      } else {
+        chosenProcess =
+          possibleProcessList[
+            Math.floor(Math.random() * possibleProcessList.length)
+          ];
+      }
       const processName = chosenProcess.name;
 
       this.instructionDict[processName] =
