@@ -82,12 +82,35 @@ export class ProcessInitializer {
       const optimizeMatch = trimmedLine.match(/^optimize:\(([^)]*)\)$/);
       if (optimizeMatch) {
         const targets = optimizeMatch[1].split(';');
-        optimizationTarget = targets[targets.length - 1]; // Take the last target
+
+        // Find the first non-time target, or use 'time' if all are time
+        for (const target of targets) {
+          if (target !== 'time') {
+            optimizationTarget = target;
+            break;
+          }
+        }
+
+        // If no non-time target found, use 'time' as default
+        if (!optimizationTarget) {
+          optimizationTarget = 'time';
+        }
+
         continue;
       }
     }
 
-    if (!optimizationTarget || !(optimizationTarget in stock)) {
+    if (!optimizationTarget) {
+      ErrorManager.errorType('bad_file');
+    }
+
+    // If optimization target is 'time', it's valid
+    if (optimizationTarget === 'time') {
+      return optimizationTarget;
+    }
+
+    // Otherwise, check if it exists in stock
+    if (!(optimizationTarget in stock)) {
       ErrorManager.errorType('bad_file');
     }
 
