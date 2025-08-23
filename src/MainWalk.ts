@@ -7,6 +7,7 @@ import {
   TodoList
 } from './types';
 import { StockManager } from './utils';
+import * as cliProgress from 'cli-progress';
 
 export class MainWalk {
   private optimizationTarget: string;
@@ -17,6 +18,7 @@ export class MainWalk {
   private updatedStock: Stock;
   private requiredStock: Stock;
   private instructionDict: InstructionDict;
+  private fileName: string;
   public goodInstructions: GoodInstruction[];
   public score: number;
   public created: number;
@@ -28,12 +30,14 @@ export class MainWalk {
     processList: ProcessList,
     maxCycle: number,
     maxInstructions: number,
-    maxDelay: number
+    maxDelay: number,
+    fileName: string
   ) {
     this.optimizationTarget = optimizationTarget;
     this.processList = processList;
     this.maxInstructions = maxInstructions;
     this.maxDelay = maxDelay;
+    this.fileName = fileName;
     this.currentStock = { ...initialStock };
     this.updatedStock = { ...initialStock };
     this.requiredStock = {};
@@ -113,7 +117,6 @@ export class MainWalk {
         todoList
       );
     }
-
     return this.goodInstructions;
   }
 
@@ -260,32 +263,43 @@ export class MainWalk {
   }
 
   public displayProcess(): void {
-    console.log('\n🚀 EXECUTION PLAN:');
-    console.log('============================================================');
+    // Calculate total number of process cycles for progress bar
+    const totalProcesses = this.goodInstructions.reduce(
+      (total, instruction) => total + instruction.processes.length,
+      0
+    );
 
+    if (totalProcesses === 0) {
+      console.log('No processes to execute');
+      return;
+    }
+
+    const progressBar = new cliProgress.SingleBar({
+      format: 'Executing processes |{bar}| {percentage}%',
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      hideCursor: true
+    });
+
+    progressBar.start(totalProcesses, 0);
+
+    let processedCount = 0;
     for (const instruction of this.goodInstructions) {
       if (instruction.processes.length > 0) {
-        const processCounts: { [key: string]: number } = {};
+        // Simulate processing time for each process
         for (const process of instruction.processes) {
-          processCounts[process] = (processCounts[process] || 0) + 1;
-        }
-
-        for (const [processName, count] of Object.entries(processCounts)) {
-          if (count === 1) {
-            console.log(
-              `⏰ Cycle ${instruction.cycle}: ${processName} (${count}x)`
-            );
-          } else {
-            console.log(
-              `⏰ Cycles ${instruction.cycle}-${
-                instruction.cycle + count - 1
-              }: ${processName} (${count}x)`
-            );
+          processedCount++;
+          progressBar.update(processedCount);
+          // Small delay to make progress visible
+          const start = Date.now();
+          while (Date.now() - start < 10) {
+            // Brief pause
           }
         }
       }
     }
 
-    console.log('============================================================');
+    progressBar.stop();
+    console.log(`📝 Main walk logged to: resources/${this.fileName}.log`);
   }
 }

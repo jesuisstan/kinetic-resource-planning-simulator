@@ -73,7 +73,7 @@ class Simulation {
   private execute(): MainWalk {
     const deltaTime = Date.now() - this.startTime;
     const progressBar = new cliProgress.SingleBar({
-      format: 'Making process |{bar}| {percentage}%',
+      format: 'Creating plan |{bar}| {percentage}%',
       barCompleteChar: '\u2588',
       barIncompleteChar: '\u2591',
       hideCursor: true
@@ -88,7 +88,8 @@ class Simulation {
       this.processList,
       this.maxCycle,
       this.maxInstructions,
-      this.maxDelay
+      this.maxDelay,
+      this.fileName
     );
 
     for (let i = 0; i < this.maxGenerations - 1; i++) {
@@ -105,7 +106,8 @@ class Simulation {
         this.processList,
         this.maxCycle,
         this.maxInstructions,
-        this.maxDelay
+        this.maxDelay,
+        this.fileName
       );
 
       if (newMainWalk.loop > mainWalkInstance.loop) {
@@ -126,11 +128,12 @@ class Simulation {
     }
 
     progressBar.stop();
+    console.log('============================================================');
     return mainWalkInstance;
   }
 
   private displayParsing(): void {
-    console.log('\n🤖 KRPSIM - Kinetic Resource Planning Simulator');
+    console.log('🤖 KRPSIM - Kinetic Resource Planning Simulator');
     console.log('============================================================');
     console.log('🔍 ANALYSING FILE...\n');
 
@@ -143,21 +146,21 @@ class Simulation {
     console.log('📦 Initial resources:');
     for (const [resource, amount] of Object.entries(this.stock)) {
       if (amount > 0) {
-        console.log(`  ${resource}: ${amount}`);
+        console.log(`    ${resource}: ${amount}`);
       }
     }
 
     // Available processes
-    console.log('\n⚙️  Available processes:');
+    console.log('⚙️  Available processes:');
     for (const [processName, process] of Object.entries(this.processList)) {
-      console.log(`  ${processName}:`);
+      console.log(`    ${processName}:`);
 
       // Inputs
       if (Object.keys(process.need).length > 0) {
         const inputs = Object.entries(process.need)
           .map(([item, qty]) => `${item}:${qty}`)
           .join(', ');
-        console.log(`    🔽 Inputs: ${inputs}`);
+        console.log(`      🔽 Inputs: ${inputs}`);
       }
 
       // Outputs
@@ -165,12 +168,11 @@ class Simulation {
         const outputs = Object.entries(process.result)
           .map(([item, qty]) => `${item}:${qty}`)
           .join(', ');
-        console.log(`    🔼 Outputs: ${outputs}`);
+        console.log(`      🔼 Outputs: ${outputs}`);
       }
 
       // Duration
-      console.log(`    ⏰ Duration: ${process.delay} cycles`);
-      console.log('');
+      console.log(`      ⏰ Duration: ${process.delay} cycles`);
     }
 
     console.log('============================================================');
@@ -213,17 +215,16 @@ class Simulation {
 
     mainWalkInstance.displayProcess();
     console.log(
-      `\n⏹️  Simulation stopped at cycle ${
+      `⏹️  Simulation stopped at cycle ${
         mainWalkInstance.goodInstructions[
           mainWalkInstance.goodInstructions.length - 1
         ].cycle *
           i +
         1
-      }\n`
+      }`
     );
-
-    console.log('📊 FINAL RESULTS:');
     console.log('============================================================');
+
     StockManager.printStock(this.stock, '📦 Final resources:');
     console.log(`⏱️  Execution time: ${endTime / 1000}s`);
     console.log('============================================================');

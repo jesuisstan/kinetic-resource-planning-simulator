@@ -135,7 +135,7 @@ class Verification {
 
   public displayResult(): void {
     // Display successful verification results
-    console.log('\n✅ VERIFICATION COMPLETE!');
+    console.log('✅ VERIFICATION COMPLETE!');
     console.log('============================================================');
     console.log('🎉 All processes executed successfully!');
     console.log(`⏰ Total cycles: ${this.cycle}`);

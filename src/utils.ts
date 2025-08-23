@@ -24,7 +24,7 @@ export class StockManager {
   static printStock(stock: Stock, msg: string): void {
     console.log(msg);
     for (const [key, value] of Object.entries(stock)) {
-      console.log(` ${key} => ${value}`);
+      console.log(`     ${key} => ${value}`);
     }
     console.log('');
   }
