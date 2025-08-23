@@ -48,7 +48,7 @@ export class MainWalk {
     this.loop = true;
 
     this.retrieveInstructions(processList);
-    this.finalizeProcess(maxCycle);
+    this.finalizeProcess(maxCycle, initialStock);
     this.calculateScore(initialStock);
   }
 
@@ -77,9 +77,13 @@ export class MainWalk {
     }
   }
 
-  private finalizeProcess(maxCycle: number): GoodInstruction[] {
+  private finalizeProcess(
+    maxCycle: number,
+    initialStock: Stock
+  ): GoodInstruction[] {
     let currentCycle = 0;
     const possibleProcesses = this.finalizePossibleProcesses(
+      initialStock,
       this.instructionDict
     );
     this.goodInstructions = [
@@ -105,6 +109,7 @@ export class MainWalk {
       delete todoList[currentCycle];
 
       const possibleProcesses = this.finalizePossibleProcesses(
+        initialStock,
         this.instructionDict
       );
       this.goodInstructions.push({
@@ -121,6 +126,7 @@ export class MainWalk {
   }
 
   private finalizePossibleProcesses(
+    initialStock: Stock,
     instructionDict: InstructionDict
   ): string[] {
     const processesCycle: string[] = [];
@@ -133,6 +139,64 @@ export class MainWalk {
         processesCycle.push(key);
         instructionDict[key]--;
         count--;
+      }
+    }
+
+    // Fallback: schedule any feasible process that produces a resource still needed
+    // by remaining planned processes. This helps advance chains (e.g., seconds -> minutes),
+    // even if those conversion steps weren't explicitly scheduled yet this cycle.
+    if (initialStock[this.optimizationTarget] <= 0) {
+      const neededSet = new Set<string>();
+      for (const [pname, remaining] of Object.entries(instructionDict)) {
+        if (!remaining || remaining <= 0) continue;
+        const proc = this.processList[pname];
+        for (const need of Object.keys(proc.need)) {
+          neededSet.add(need);
+        }
+      }
+
+      if (neededSet.size > 0) {
+        for (const [name, proc] of Object.entries(this.processList)) {
+          if (processesCycle.includes(name)) continue;
+          const producesNeeded = Object.keys(proc.result).some((r) =>
+            neededSet.has(r)
+          );
+          if (!producesNeeded) continue;
+
+          // Check feasibility against current updatedStock state
+          let canRun = true;
+          for (const [need, qty] of Object.entries(proc.need)) {
+            if ((this.updatedStock[need] || 0) < qty) {
+              canRun = false;
+              break;
+            }
+          }
+          if (!canRun) continue;
+
+          if (this.finalizeProcessIfPossible(name)) {
+            processesCycle.push(name);
+          }
+        }
+      }
+
+      // Last-resort fallback: if still nothing scheduled this cycle, try any feasible process once.
+      if (processesCycle.length === 0) {
+        for (const [name, proc] of Object.entries(this.processList)) {
+          // Skip if already added (shouldn't happen here)
+          if (processesCycle.includes(name)) continue;
+          let canRun = true;
+          for (const [need, qty] of Object.entries(proc.need)) {
+            if ((this.updatedStock[need] || 0) < qty) {
+              canRun = false;
+              break;
+            }
+          }
+          if (!canRun) continue;
+          if (this.finalizeProcessIfPossible(name)) {
+            processesCycle.push(name);
+            break; // only one to avoid oscillations
+          }
+        }
       }
     }
 
@@ -174,7 +238,16 @@ export class MainWalk {
   private retrieveInstructions(processList: ProcessList): void {
     this.selectProcess(this.optimizationTarget, -1, processList);
     while (Object.keys(this.requiredStock).length > 0) {
-      const requiredName = Object.keys(this.requiredStock)[0];
+      // Prune non-positive entries to avoid looping on negatives (e.g., year:-1)
+      for (const k of Object.keys(this.requiredStock)) {
+        if ((this.requiredStock[k] || 0) <= 0) delete this.requiredStock[k];
+      }
+      if (Object.keys(this.requiredStock).length === 0) break;
+
+      // Prefer a resource with a positive unmet need
+      const keys = Object.keys(this.requiredStock);
+      const requiredName =
+        keys.find((k) => (this.requiredStock[k] || 0) > 0) || keys[0];
       if (
         !this.selectProcess(
           requiredName,
