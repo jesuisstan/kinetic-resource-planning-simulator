@@ -18,6 +18,7 @@ class Verification {
     { startCycle: number; endCycle: number; processName: string }
   >(); // Track running processes
   private lastCycleInTrace = 0; // Last cycle found in trace file
+  private allResources = new Set<string>(); // All resources mentioned in config
 
   constructor(file: string, trace: string) {
     this.file = file;
@@ -41,6 +42,10 @@ class Verification {
       this.processList
     );
     this.initialStock = { ...this.stock }; // Save initial state for display
+
+    // Collect all resources mentioned in processes
+    this.collectAllResources();
+
     this.readTrace(traceLines);
   }
 
@@ -179,6 +184,35 @@ class Verification {
     }
   }
 
+  private collectAllResources(): void {
+    // Add all resources from initial stock
+    for (const resource of Object.keys(this.initialStock)) {
+      this.allResources.add(resource);
+    }
+
+    // Add all resources mentioned in processes
+    for (const process of Object.values(this.processList)) {
+      for (const resource of Object.keys(process.need)) {
+        this.allResources.add(resource);
+      }
+      for (const resource of Object.keys(process.result)) {
+        this.allResources.add(resource);
+      }
+    }
+  }
+
+  private printStockComplete(stock: Stock, msg: string): void {
+    console.log(msg);
+    // Sort resources alphabetically for consistent output
+    const sortedResources = Array.from(this.allResources).sort();
+
+    for (const resource of sortedResources) {
+      const value = stock[resource] || 0;
+      console.log(`     ${resource} => ${value}`);
+    }
+    console.log('');
+  }
+
   public displayResult(): void {
     // Display successful verification results
     console.log('✅ VERIFICATION COMPLETE!');
@@ -190,8 +224,8 @@ class Verification {
     // Show resource summary (initial vs final state)
     console.log('📦 RESOURCE SUMMARY:');
     console.log('============================================================');
-    StockManager.printStock(this.initialStock, '🔵 Initial resources:');
-    StockManager.printStock(this.stock, '🟢 Final resources:');
+    this.printStockComplete(this.initialStock, '🔵 Initial resources:');
+    this.printStockComplete(this.stock, '🟢 Final resources:');
     console.log('============================================================');
   }
 }

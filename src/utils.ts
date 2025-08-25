@@ -29,6 +29,26 @@ export class StockManager {
     }
     console.log('');
   }
+
+  static printStockComplete(stock: Stock, msg: string): void {
+    console.log(msg);
+    // Get all unique resource names from both initial and current stock
+    const allResources = new Set<string>();
+
+    // Add all resources that have been mentioned in any process
+    for (const [key, value] of Object.entries(stock)) {
+      allResources.add(key);
+    }
+
+    // Sort resources alphabetically for consistent output
+    const sortedResources = Array.from(allResources).sort();
+
+    for (const resource of sortedResources) {
+      const value = stock[resource] || 0;
+      console.log(`     ${resource} => ${value}`);
+    }
+    console.log('');
+  }
 }
 
 export class ProcessInitializer {
