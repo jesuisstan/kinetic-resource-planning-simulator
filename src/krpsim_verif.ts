@@ -55,7 +55,7 @@ class Verification {
       this.cycle = parseInt(cycleStr);
 
       if (isNaN(this.cycle)) {
-        ErrorManager.errorVerif(this.cycle, '', this.stock, '', 11);
+        ErrorManager.errorVerif(this.cycle, processName, this.stock, '', 11);
       }
 
       // Check if process is defined in configuration

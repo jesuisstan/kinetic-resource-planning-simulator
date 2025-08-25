@@ -183,7 +183,7 @@ export class ErrorManager {
       8: `Error: Process ${processName} triggered without satisfying all conditions at cycle ${cycle}.\nAdditional Info: ${stockElement}`,
       9: 'Error: The trace file is empty.',
       10: `Error: Malformed or empty line in the trace file: ${stockElement}`,
-      11: `Error: Cycle ${cycle} is not a number.`
+      11: `Error: Process ${processName} cycle ${cycle} is not a number.`
     };
 
     console.log(`\n${errorMessages[errorType]}\n`);
