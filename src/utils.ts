@@ -218,11 +218,20 @@ export class ScenarioAnalyzer {
     const hasSelfReferencingProcesses =
       this.hasComplexSelfReferencingProcesses(processList);
 
+    // 4. Presence of processes with the same resource names in input and output
+    // And this resource must have different levels (not a simple cycle)
+    const hasComplexSelfReferencingProcesses =
+      this.hasComplexSelfReferencingProcesses(processList);
+
+    //console.log("hasHierarchicalRecursion", hasHierarchicalRecursion);
+    //console.log("hasComplexProcesses", hasComplexProcesses);
+    //console.log("hasSelfReferencingProcesses", hasSelfReferencingProcesses);
+    //console.log("hasComplexSelfReferencingProcesses", hasComplexSelfReferencingProcesses);//debug
     // Complex scenario only if there is hierarchical recursion
     // OR combination of complex processes with self-reference
     return (
-      hasHierarchicalRecursion ||
-      (hasComplexProcesses && hasSelfReferencingProcesses)
+      hasHierarchicalRecursion &&
+      (hasComplexProcesses && hasSelfReferencingProcesses && hasComplexSelfReferencingProcesses)
     );
   }
 

@@ -6,7 +6,7 @@ import {
   GoodInstruction,
   TodoList
 } from './types';
-import { StockManager } from './utils';
+import { ScenarioAnalyzer, StockManager } from './utils';
 import * as cliProgress from 'cli-progress';
 
 export class MainWalk {
@@ -50,6 +50,10 @@ export class MainWalk {
     this.retrieveInstructions(processList);
     this.finalizeProcess(maxCycle, initialStock);
     this.calculateScore(initialStock);
+  }
+
+  private isComplexScenario(): boolean {
+    return !ScenarioAnalyzer.isComplexScenario(this.processList);
   }
 
   private calculateScore(initialStock: Stock): void {
@@ -131,7 +135,8 @@ export class MainWalk {
   ): string[] {
     const processesCycle: string[] = [];
     // 1) Conversion-first (only for inception): expand needs closure and run fast, feasible producers
-    if (this.fileName === 'inception') {
+    if (this.isComplexScenario()) {
+      //console.log('Complex scenario!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'); // debug
       const needClosure = new Set<string>();
       const seedNeeds: string[] = [];
       for (const [pname, remaining] of Object.entries(instructionDict)) {
@@ -193,7 +198,7 @@ export class MainWalk {
     }
 
     // 3) Fallback (only for inception): any feasible producer of still-needed resources
-    if (this.fileName === 'inception') {
+    if (this.isComplexScenario()) {
       const stillNeeded = new Set<string>();
       for (const [pname, remaining] of Object.entries(instructionDict)) {
         if (!remaining || remaining <= 0) continue;
@@ -223,7 +228,7 @@ export class MainWalk {
     }
 
     // 4) Last resort (only for inception): any feasible process once
-    if (this.fileName === 'inception' && processesCycle.length === 0) {
+    if (this.isComplexScenario() && processesCycle.length === 0) {
       for (const [name, proc] of Object.entries(this.processList)) {
         if (processesCycle.includes(name)) continue;
         let canRun = true;
@@ -278,7 +283,7 @@ export class MainWalk {
 
   private retrieveInstructions(processList: ProcessList): void {
     this.selectProcess(this.optimizationTarget, -1, processList);
-    if (this.fileName === 'inception') {
+    if (this.isComplexScenario()) {
       while (Object.keys(this.requiredStock).length > 0) {
         // Prune non-positive entries to avoid looping on negatives (e.g., year:-1)
         for (const k of Object.keys(this.requiredStock)) {
@@ -340,7 +345,7 @@ export class MainWalk {
 
       // Deterministic choice only for inception; otherwise keep random choice
       let chosenProcess: Process;
-      if (this.fileName === 'inception') {
+      if (this.isComplexScenario()) {
         if (requiredName === this.optimizationTarget) {
           let best = -Infinity;
           chosenProcess = possibleProcessList[0];

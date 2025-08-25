@@ -1,0 +1,45 @@
+#
+# furniture demo - krpsim
+# Living room furniture assembly scenario
+#
+# stock      name:quantity
+wood_plank:25
+screws:70
+hinges:20
+drawers:10
+shelves:20
+legs:20
+#
+# process   name:(need1:qty1;need2:qty2;[...]):(result1:qty1;result2:qty2;[...]):delay
+#
+# Cabinet assembly processes
+assemble_cabinet_frame:(wood_plank:4;screws:8):(cabinet_frame:1):25
+install_cabinet_shelves:(cabinet_frame:1;shelves:3;screws:6):(cabinet_with_shelves:1):15
+add_cabinet_drawers:(cabinet_with_shelves:1;drawers:2;hinges:4):(cabinet_complete:1):20
+#
+# Bookshelf assembly processes
+assemble_bookshelf_frame:(wood_plank:3;screws:6):(bookshelf_frame:1):20
+install_bookshelf_shelves:(bookshelf_frame:1;shelves:4;screws:8):(bookshelf_complete:1):18
+#
+# Coffee table assembly processes (simplified)
+assemble_coffee_table:(wood_plank:2;legs:4;screws:8):(coffee_table:1):20
+#
+# TV stand assembly processes
+assemble_tv_stand_base:(wood_plank:3;screws:6):(tv_stand_base:1):22
+install_tv_stand_shelves:(tv_stand_base:1;shelves:2;screws:4):(tv_stand_with_shelves:1):12
+add_tv_stand_drawers:(tv_stand_with_shelves:1;drawers:1;hinges:2):(tv_stand_complete:1):16
+#
+# Side table assembly processes
+assemble_side_table:(wood_plank:1;legs:4;screws:4):(side_table:1):14
+
+#
+# Living room set assembly (final products)
+assemble_living_room_set:(cabinet_complete:1;bookshelf_complete:1;coffee_table:1;tv_stand_complete:1;side_table:2):(living_room_set:1):40
+#
+# optimize time for 0 stock and no process possible,
+# or maximize some products over a long delay
+# optimize:(stock1;stock2;...)
+#
+optimize:(time;living_room_set)
+#
+
