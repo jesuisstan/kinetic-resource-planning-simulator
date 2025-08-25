@@ -207,228 +207,55 @@ export class ScenarioAnalyzer {
    * Determines if a scenario is complex based on process analysis
    */
   static isComplexScenario(processList: ProcessList): boolean {
-    // 1. Presence of hierarchical recursion (processes consume and produce the same resource with different levels)
-    const hasHierarchicalRecursion = this.hasHierarchicalRecursion(processList);
+    // 1. Self-referencing processes that change resource quantities (start_dream_2)
+    // 2. At least one very long delay process
 
-    // 2. Presence of processes with multiple inputs and outputs (more than 3)
-    const hasComplexProcesses = this.hasComplexProcesses(processList);
+    const hasLevelChangingSelfReferencingProcesses =
+      this.hasLevelChangingSelfReferencingProcesses(processList);
+    const hasVeryLongDelays = this.hasVeryLongDelays(processList);
 
-    // 3. Presence of processes with the same resource names in input and output
-    // And this resource must have different levels (not a simple cycle)
-    const hasSelfReferencingProcesses =
-      this.hasComplexSelfReferencingProcesses(processList);
-
-    // 4. Presence of processes with the same resource names in input and output
-    // And this resource must have different levels (not a simple cycle)
-    const hasComplexSelfReferencingProcesses =
-      this.hasComplexSelfReferencingProcesses(processList);
-
-    //console.log("hasHierarchicalRecursion", hasHierarchicalRecursion);
-    //console.log("hasComplexProcesses", hasComplexProcesses);
-    //console.log("hasSelfReferencingProcesses", hasSelfReferencingProcesses);
-    //console.log("hasComplexSelfReferencingProcesses", hasComplexSelfReferencingProcesses);//debug
-    // Complex scenario only if there is hierarchical recursion
-    // OR combination of complex processes with self-reference
-    return (
-      hasHierarchicalRecursion &&
-      (hasComplexProcesses && hasSelfReferencingProcesses && hasComplexSelfReferencingProcesses)
-    );
+    return hasLevelChangingSelfReferencingProcesses && hasVeryLongDelays;
   }
 
   /**
-   * Checks for processes with multiple inputs and outputs (more than 3)
+   * Checks for very long delays relative to other processes in the scenario
+   * Looks for processes with delays that are significantly longer than the average
    */
-  private static hasComplexProcesses(processList: ProcessList): boolean {
-    return Object.values(processList).some(
-      (process) =>
-        Object.keys(process.need).length > 3 ||
-        Object.keys(process.result).length > 3
-    );
+  private static hasVeryLongDelays(processList: ProcessList): boolean {
+    const processes = Object.values(processList);
+    if (processes.length === 0) return false;
+
+    const delays = processes.map((p) => p.delay);
+    const avgDelay =
+      delays.reduce((sum, delay) => sum + delay, 0) / delays.length;
+    const maxDelay = Math.max(...delays);
+
+    // A process is considered "very long" if it's at least 5x the average delay
+    // and at least 100 cycles long (to avoid false positives with very fast scenarios)
+    return maxDelay >= Math.max(avgDelay * 5, 100);
   }
 
   /**
-   * Checks for complex self-referencing processes
-   * Excludes simple cycles like A -> B -> A
+   * Checks for processes that consume and produce the same resource with different levels
    */
-  private static hasComplexSelfReferencingProcesses(
+  private static hasLevelChangingSelfReferencingProcesses(
     processList: ProcessList
   ): boolean {
-    const selfReferencingProcesses = Object.values(processList).filter(
-      (process) => {
-        const needs = Object.keys(process.need);
-        const results = Object.keys(process.result);
-        return needs.some((need) => results.includes(need));
-      }
-    );
+    return Object.values(processList).some((process) => {
+      const needs = Object.keys(process.need);
+      const results = Object.keys(process.result);
 
-    if (selfReferencingProcesses.length === 0) return false;
-
-    // Check if there is a resource with different levels
-    const resourceLevels = new Map<string, Set<number>>();
-
-    for (const process of selfReferencingProcesses) {
-      for (const [resource, quantity] of Object.entries(process.need)) {
-        if (resource in process.result) {
-          if (!resourceLevels.has(resource)) {
-            resourceLevels.set(resource, new Set());
-          }
-          resourceLevels.get(resource)!.add(quantity);
-          resourceLevels.get(resource)!.add(process.result[resource]);
-        }
-      }
-    }
-
-    // Check if there is a resource with different levels (not a simple cycle)
-    for (const [resource, levels] of resourceLevels.entries()) {
-      if (levels.size > 1) {
-        // Check that this is not a simple cycle A -> B -> A
-        const sortedLevels = Array.from(levels).sort((a, b) => a - b);
-
-        // If there are at least 3 different levels, this is complex self-reference
-        if (sortedLevels.length >= 3) {
-          return true;
-        }
-
-        // Check that this is not a simple cycle through intermediate resources
-        const hasComplexCycle = this.hasComplexCycle(resource, processList);
-        if (hasComplexCycle) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Checks if there is a complex cycle for a resource
-   * Simple cycle: A -> B -> A
-   * Complex cycle: A -> B -> C -> A or A -> B -> C -> D -> A
-   */
-  private static hasComplexCycle(
-    resource: string,
-    processList: ProcessList
-  ): boolean {
-    const visited = new Set<string>();
-    const path: string[] = [];
-
-    const dfs = (
-      currentResource: string,
-      targetResource: string,
-      depth: number
-    ): boolean => {
-      if (depth > 3) return false; // Too deep
-      if (currentResource === targetResource && depth > 1) return true; // Cycle found
-
-      visited.add(currentResource);
-      path.push(currentResource);
-
-      // Look for processes that consume the current resource
-      for (const process of Object.values(processList)) {
-        if (currentResource in process.need) {
-          // Check all outputs of the process
-          for (const outputResource of Object.keys(process.result)) {
-            if (!visited.has(outputResource)) {
-              if (dfs(outputResource, targetResource, depth + 1)) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-
-      path.pop();
-      visited.delete(currentResource);
-      return false;
-    };
-
-    return dfs(resource, resource, 0);
-  }
-
-  /**
-   * Checks for hierarchical recursion
-   * Finds processes that consume and produce the same resource
-   * but with different "levels" or quantities
-   */
-  private static hasHierarchicalRecursion(processList: ProcessList): boolean {
-    const selfReferencingProcesses = Object.values(processList).filter(
-      (process) => {
-        const needs = Object.keys(process.need);
-        const results = Object.keys(process.result);
-        return needs.some((need) => results.includes(need));
-      }
-    );
-
-    if (selfReferencingProcesses.length === 0) return false;
-
-    // Check if there are different "levels" of the same resource
-    const resourceLevels = new Map<string, Set<number>>();
-
-    for (const process of selfReferencingProcesses) {
-      for (const [resource, quantity] of Object.entries(process.need)) {
-        if (resource in process.result) {
-          if (!resourceLevels.has(resource)) {
-            resourceLevels.set(resource, new Set());
-          }
-          resourceLevels.get(resource)!.add(quantity);
-          resourceLevels.get(resource)!.add(process.result[resource]);
-        }
-      }
-    }
-
-    // Check if there is a resource with different levels AND hierarchical chain
-    for (const [resource, levels] of resourceLevels.entries()) {
-      if (levels.size > 1) {
-        // Check if there is a hierarchical chain for this resource
-        const sortedLevels = Array.from(levels).sort((a, b) => a - b);
-
-        // Hierarchical recursion must have at least 3 levels and create a chain
-        if (sortedLevels.length >= 3) {
-          // Check if there are processes that create a chain of levels
-          const hasHierarchicalChain = this.hasHierarchicalChain(
-            resource,
-            sortedLevels,
-            processList
-          );
-          if (hasHierarchicalChain) {
+      // Check if any resource is both consumed and produced
+      for (const need of needs) {
+        if (results.includes(need)) {
+          // Check if the quantities are different (changing the level)
+          if (process.need[need] !== process.result[need]) {
             return true;
           }
         }
       }
-    }
 
-    return false;
-  }
-
-  /**
-   * Checks if there are processes that create a hierarchical chain
-   * For example: dream:1 -> dream:2 -> dream:3
-   */
-  private static hasHierarchicalChain(
-    resource: string,
-    levels: number[],
-    processList: ProcessList
-  ): boolean {
-    const processesForResource = Object.values(processList).filter(
-      (process) => resource in process.need && resource in process.result
-    );
-
-    if (processesForResource.length < 2) return false;
-
-    // Check if there are processes that consume one level and produce the next
-    for (let i = 0; i < levels.length - 1; i++) {
-      const currentLevel = levels[i];
-      const nextLevel = levels[i + 1];
-
-      const hasProcessForLevel = processesForResource.some(
-        (process) =>
-          process.need[resource] === currentLevel &&
-          process.result[resource] === nextLevel
-      );
-
-      if (!hasProcessForLevel) return false;
-    }
-
-    return true;
+      return false;
+    });
   }
 }

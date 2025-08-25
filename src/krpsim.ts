@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MainWalk } from './MainWalk';
 import { StockManager, ProcessInitializer, ErrorManager } from './utils';
-import { Stock, ProcessList, SimulationConfig } from './types';
+import { Stock, ProcessList } from './types';
 
 class Simulation {
   private stock: Stock = {};

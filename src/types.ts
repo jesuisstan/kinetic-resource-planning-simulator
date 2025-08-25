@@ -26,14 +26,3 @@ export interface GoodInstruction {
 export interface TodoList {
   [cycle: number]: string[];
 }
-
-export interface SimulationConfig {
-  maxCycle: number;
-  maxDelay: number;
-  maxInstructions: number;
-  maxGenerations: number;
-  fileName: string;
-  optimizationTarget: string;
-  stock: Stock;
-  processList: ProcessList;
-}
