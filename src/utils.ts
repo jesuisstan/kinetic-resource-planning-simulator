@@ -49,6 +49,58 @@ export class StockManager {
     }
     console.log('');
   }
+
+  static displayParsing(config: {
+    fileName: string;
+    maxDelay: number;
+    optimizationTarget: string;
+    stock: Stock;
+    processList: ProcessList;
+  }): void {
+    console.log('🤖 KRPSIM - Kinetic Resource Planning Simulator');
+    console.log('============================================================');
+    console.log('🔍 ANALYSING FILE...\n');
+
+    // File info
+    console.log(`📁 Scenario: ${config.fileName}`);
+    console.log(`⏱️  Time limit: ${config.maxDelay}`);
+    console.log(`🎯 Optimization target: ${config.optimizationTarget}`);
+
+    // Initial resources
+    console.log('📦 Initial resources:');
+    for (const [resource, amount] of Object.entries(config.stock)) {
+      if (amount > 0) {
+        console.log(`    ${resource}: ${amount}`);
+      }
+    }
+
+    // Available processes
+    console.log('⚙️  Available processes:');
+    for (const [processName, process] of Object.entries(config.processList)) {
+      console.log(`    ${processName}:`);
+
+      // Inputs
+      if (Object.keys(process.need).length > 0) {
+        const inputs = Object.entries(process.need)
+          .map(([item, qty]) => `${item}:${qty}`)
+          .join(', ');
+        console.log(`      🔽 Inputs: ${inputs}`);
+      }
+
+      // Outputs
+      if (Object.keys(process.result).length > 0) {
+        const outputs = Object.entries(process.result)
+          .map(([item, qty]) => `${item}:${qty}`)
+          .join(', ');
+        console.log(`      🔼 Outputs: ${outputs}`);
+      }
+
+      // Duration
+      console.log(`      ⏰ Duration: ${process.delay} cycles`);
+    }
+
+    console.log('============================================================');
+  }
 }
 
 export class ProcessInitializer {

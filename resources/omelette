@@ -1,0 +1,23 @@
+#
+# omelette demo - krpsim
+# Sequential process of making an omelette from 3 eggs
+#
+# stock      name:quantity
+dollar:3
+oil:1
+pan:1
+#
+# process   name:(need1:qty1;need2:qty2;[...]):(result1:qty1;result2:qty2;[...]):delay
+#
+# Sequential chain: egg -> cracked_egg -> mixed_eggs -> omelette
+buy_eggs:(dollar:3):(egg:3):10
+crack_eggs:(egg:3):(cracked_egg:3):5
+mix_eggs:(cracked_egg:3):(mixed_eggs:1):20
+cook_omelette:(mixed_eggs:1;oil:1;pan:1):(omelette:1;pan:1):15
+#
+# optimize time for no process possible (eating stock, produce all possible),
+# or maximize some products over a long delay
+# optimize:(time|stock1;time|stock2;...)
+#
+optimize:(time;omelette)
+#

@@ -132,49 +132,13 @@ class Simulation {
   }
 
   private displayParsing(): void {
-    console.log('🤖 KRPSIM - Kinetic Resource Planning Simulator');
-    console.log('============================================================');
-    console.log('🔍 ANALYSING FILE...\n');
-
-    // File info
-    console.log(`📁 Scenario: ${this.fileName}`);
-    console.log(`⏱️  Time limit: ${this.maxDelay}`);
-    console.log(`🎯 Optimization target: ${this.optimizationTarget}`);
-
-    // Initial resources
-    console.log('📦 Initial resources:');
-    for (const [resource, amount] of Object.entries(this.stock)) {
-      if (amount > 0) {
-        console.log(`    ${resource}: ${amount}`);
-      }
-    }
-
-    // Available processes
-    console.log('⚙️  Available processes:');
-    for (const [processName, process] of Object.entries(this.processList)) {
-      console.log(`    ${processName}:`);
-
-      // Inputs
-      if (Object.keys(process.need).length > 0) {
-        const inputs = Object.entries(process.need)
-          .map(([item, qty]) => `${item}:${qty}`)
-          .join(', ');
-        console.log(`      🔽 Inputs: ${inputs}`);
-      }
-
-      // Outputs
-      if (Object.keys(process.result).length > 0) {
-        const outputs = Object.entries(process.result)
-          .map(([item, qty]) => `${item}:${qty}`)
-          .join(', ');
-        console.log(`      🔼 Outputs: ${outputs}`);
-      }
-
-      // Duration
-      console.log(`      ⏰ Duration: ${process.delay} cycles`);
-    }
-
-    console.log('============================================================');
+    StockManager.displayParsing({
+      fileName: this.fileName,
+      maxDelay: this.maxDelay,
+      optimizationTarget: this.optimizationTarget,
+      stock: this.stock,
+      processList: this.processList
+    });
   }
 
   private displayResult(mainWalkInstance: MainWalk): void {
@@ -224,7 +188,7 @@ class Simulation {
     );
     console.log('============================================================');
 
-    StockManager.printStock(this.stock, '📦 Final resources:');
+    StockManager.printStockComplete(this.stock, '📦 Final resources:');
     console.log(`⏱️  Execution time: ${endTime / 1000}s`);
     console.log('============================================================');
 

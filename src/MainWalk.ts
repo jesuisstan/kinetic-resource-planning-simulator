@@ -460,8 +460,8 @@ export class MainWalk {
         }
       }
     }
-
     progressBar.stop();
+    console.log('');
     console.log(`📝 Main walk logged to: resources/${this.fileName}.log`);
   }
 }

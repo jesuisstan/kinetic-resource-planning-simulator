@@ -217,13 +217,13 @@ class Verification {
     // Display successful verification results
     console.log('✅ VERIFICATION COMPLETE!');
     console.log('============================================================');
-    console.log('🎉 All processes executed successfully!');
+    console.log('✋ Execution finished!');
     console.log(`⏰ Total cycles: ${this.lastCycleInTrace}`);
     console.log('');
 
     // Show resource summary (initial vs final state)
-    console.log('📦 RESOURCE SUMMARY:');
     console.log('============================================================');
+    console.log('📦 RESOURCE SUMMARY:\n');
     this.printStockComplete(this.initialStock, '🔵 Initial resources:');
     this.printStockComplete(this.stock, '🟢 Final resources:');
     console.log('============================================================');
