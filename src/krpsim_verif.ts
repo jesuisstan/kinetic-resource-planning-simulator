@@ -13,6 +13,11 @@ class Verification {
   private cycle = 0; // Current simulation cycle
   private maxDelay = 0; // Maximum process delay
   private executedProcesses = new Set<string>(); // Track executed processes
+  private runningProcesses = new Map<
+    string,
+    { startCycle: number; endCycle: number; processName: string }
+  >(); // Track running processes
+  private lastCycleInTrace = 0; // Last cycle found in trace file
 
   constructor(file: string, trace: string) {
     this.file = file;
@@ -42,6 +47,7 @@ class Verification {
   private readTrace(traceLines: string[]): void {
     let previousCycle = 0;
     const cycleSet = new Set<number>();
+    let hasNoMoreProcessDoable = false;
 
     // Process each line in the trace file
     for (const line of traceLines) {
@@ -53,6 +59,7 @@ class Verification {
       // Parse cycle number and process name
       const [cycleStr, processName] = line.trim().split(':');
       this.cycle = parseInt(cycleStr);
+      this.lastCycleInTrace = Math.max(this.lastCycleInTrace, this.cycle);
 
       if (isNaN(this.cycle)) {
         ErrorManager.errorVerif(this.cycle, processName, this.stock, '', 11);
@@ -81,6 +88,9 @@ class Verification {
           7
         );
       }
+
+      // Complete processes that finished before this cycle
+      this.completeFinishedProcesses(this.cycle);
 
       // Resource availability check (only for actual processes)
       if (processName !== 'no_more_process_doable') {
@@ -115,25 +125,57 @@ class Verification {
       if (processName !== 'no_more_process_doable') {
         const process = this.processList[processName];
 
-        // Consume required resources and produce results
+        // Consume required resources immediately when process starts
         StockManager.update(this.stock, process.need, '-'); // Subtract consumed resources
-        StockManager.update(this.stock, process.result, '+'); // Add produced resources
 
-        // Track process execution
-        this.processList[processName].startCycle = this.cycle;
-        this.maxDelay = Math.max(
-          this.maxDelay,
-          this.processList[processName].delay
-        );
+        // Track process execution - add to running processes
+        const endCycle = this.cycle + process.delay;
+        const processKey = `${processName}_${this.cycle}_${this.runningProcesses.size}`; // Unique key for each process instance
+        this.runningProcesses.set(processKey, {
+          startCycle: this.cycle,
+          endCycle,
+          processName
+        }); // Store process name in the info
+        this.maxDelay = Math.max(this.maxDelay, process.delay);
         this.executedProcesses.add(processName);
       } else {
         // End of simulation marker found
+        hasNoMoreProcessDoable = true;
         break;
       }
 
       // Update tracking variables for next iteration
       previousCycle = this.cycle;
       cycleSet.add(this.cycle);
+    }
+
+    // Complete processes that finished within the simulation time
+    this.completeFinishedProcesses(this.lastCycleInTrace);
+
+    // Check if simulation ended properly with no_more_process_doable marker
+    if (!hasNoMoreProcessDoable) {
+      ErrorManager.errorVerif(
+        this.lastCycleInTrace,
+        '',
+        this.stock,
+        'Missing no_more_process_doable marker at end of simulation',
+        12
+      );
+    }
+  }
+
+  private completeFinishedProcesses(currentCycle: number): void {
+    for (const [processKey, processInfo] of this.runningProcesses.entries()) {
+      const processName = processInfo.processName; // Use stored process name
+      if (!this.processList[processName]) {
+        continue;
+      }
+      if (processInfo.endCycle <= currentCycle) {
+        // Process finished, add its results
+        const process = this.processList[processName];
+        StockManager.update(this.stock, process.result, '+'); // Add produced resources
+        this.runningProcesses.delete(processKey);
+      }
     }
   }
 
@@ -142,7 +184,7 @@ class Verification {
     console.log('✅ VERIFICATION COMPLETE!');
     console.log('============================================================');
     console.log('🎉 All processes executed successfully!');
-    console.log(`⏰ Total cycles: ${this.cycle}`);
+    console.log(`⏰ Total cycles: ${this.lastCycleInTrace}`);
     console.log('');
 
     // Show resource summary (initial vs final state)
