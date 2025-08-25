@@ -53,7 +53,7 @@ export class MainWalk {
   }
 
   private isComplexScenario(): boolean {
-    return !ScenarioAnalyzer.isComplexScenario(this.processList);
+    return ScenarioAnalyzer.isComplexScenario(this.processList);
   }
 
   private calculateScore(initialStock: Stock): void {
@@ -134,9 +134,8 @@ export class MainWalk {
     instructionDict: InstructionDict
   ): string[] {
     const processesCycle: string[] = [];
-    // 1) Conversion-first (only for inception): expand needs closure and run fast, feasible producers
+    // 1) Conversion-first: expand needs closure and run fast, feasible producers
     if (this.isComplexScenario()) {
-      //console.log('Complex scenario!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'); // debug
       const needClosure = new Set<string>();
       const seedNeeds: string[] = [];
       for (const [pname, remaining] of Object.entries(instructionDict)) {
@@ -197,7 +196,7 @@ export class MainWalk {
       }
     }
 
-    // 3) Fallback (only for inception): any feasible producer of still-needed resources
+    // 3) Fallback: any feasible producer of still-needed resources
     if (this.isComplexScenario()) {
       const stillNeeded = new Set<string>();
       for (const [pname, remaining] of Object.entries(instructionDict)) {

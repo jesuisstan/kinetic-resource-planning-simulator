@@ -163,7 +163,7 @@ function main(): void {
 
   // Validate required arguments
   if (!file || !trace) {
-    console.error('Usage: krpsim_verif <file> <trace>');
+    console.error('Usage: krpsim_verif <config-file> <trace-file>');
     process.exit(1);
   }
 
