@@ -71,7 +71,6 @@ class Simulation {
   }
 
   private execute(): MainWalk {
-    const deltaTime = Date.now() - this.startTime;
     const progressBar = new cliProgress.SingleBar({
       format: 'Creating plan |{bar}| {percentage}%',
       barCompleteChar: '\u2588',

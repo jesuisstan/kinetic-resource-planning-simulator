@@ -54,6 +54,10 @@ class Verification {
       const [cycleStr, processName] = line.trim().split(':');
       this.cycle = parseInt(cycleStr);
 
+      if (isNaN(this.cycle)) {
+        ErrorManager.errorVerif(this.cycle, '', this.stock, '', 11);
+      }
+
       // Check if process is defined in configuration
       if (
         !(processName in this.processList) &&
