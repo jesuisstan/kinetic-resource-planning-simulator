@@ -1,0 +1,25 @@
+#
+#  krpsim photography service
+#
+studio:10
+money:10000
+#
+buy_camera:(money:100):(camera:700):200
+buy_lens:(money:100):(lens:400):200
+buy_tripod:(money:100):(tripod:100):200
+buy_lighting:(money:100):(lighting:800):200
+buy_memory:(money:100):(memory:2000):200
+#
+setup_equipment:(tripod:1):(tripod_ready:1;tripod_stand:1):2
+pack_equipment:(tripod_ready:1;tripod_stand:1):(tripod:1):1
+do_portrait_session:(tripod:5;lighting:100;memory:5):(portrait_photos:300;tripod_stand:3):300
+do_event_coverage:(tripod:3;lighting:200;memory:2):(event_photos:100):800
+do_family_session:(portrait_photos:100;camera:30;studio:1):(family_album:8;studio:1):50
+sell_family_session:(family_album:10):(money:100):30
+do_commercial_work:(tripod_ready:10;memory:4;studio:1):(commercial_photos:5;studio:1):300
+sell_commercial_work:(commercial_photos:10):(money:300):30
+do_package_deal:(family_album:7;commercial_photos:1;money:30):(photo_package:1):1
+sell_package:(photo_package:100):(money:55000):30
+#
+optimize:(money)
+#
