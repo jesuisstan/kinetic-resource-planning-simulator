@@ -1,0 +1,18 @@
+#
+# programming_infinite demo - krpsim
+#
+# stock      name:quantity
+coffee:10
+programmer:1
+#
+# process   name:(need1:qty1;need2:qty2;[...]):(result1:qty1;result2:qty2;[...]):delay
+#
+drink_coffee:(coffee:1)::10
+write_code:(coffee:1;programmer:1):(programmer:1;code:1):15
+debug_bug:(coffee:1;programmer:1):(programmer:1;debugged_code:1):12
+test_feature:(programmer:1):(programmer:1;test_results:1):8
+deploy_app:(programmer:1):(programmer:1;deployed_app:1):20
+make_coffee:(programmer:1):(programmer:1;coffee:2):25
+#
+optimize:(code)
+#
