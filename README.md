@@ -1,6 +1,6 @@
 # Kinetic Resource Planning Simulator
 
-TypeScript implementation of the resource planning simulator (krpsim) for Ecole42 project.
+TypeScript implementation of the Kinetic Resource Planning Simulator (krpsim) for Ecole42 project.
 
 ## Installation and Build
 
@@ -19,53 +19,87 @@ npm run dev
 
 ### Main krpsim Program
 
-```bash
-# Built version
-node dist/krpsim.js <configuration_file> <max_time>
+Using npm script (recommended):
 
-# Development mode
+```bash
+npm run krpsim <configuration_file> <max_time>
+```
+
+Direct execution:
+
+```bash
+node dist/krpsim.js <configuration_file> <max_time>
+```
+
+Development mode:
+
+```bash
 npm run dev resources/simple 10
 ```
 
 Examples:
 
+Simple configuration:
+
 ```bash
-# Simple configuration
-node dist/krpsim.js resources/simple 10
+npm run krpsim resources/simple 10
+```
 
-# Steak configuration
-node dist/krpsim.js resources/steak 30
+Steak configuration:
 
-# IKEA configuration
-node dist/krpsim.js resources/ikea 50
+```bash
+npm run krpsim resources/steak 30
+```
 
-# Self-sustaining configuration
-node dist/krpsim.js resources/recre 100
+IKEA configuration:
 
-# Apple configuration
-node dist/krpsim.js resources/pomme 1000
+```bash
+npm run krpsim resources/ikea 50
+```
 
-# Nested processes configuration
-node dist/krpsim.js resources/inception 100
+Self-sustaining configuration:
+
+```bash
+npm run krpsim resources/recre 100
+```
+
+Apple configuration:
+
+```bash
+npm run krpsim resources/pomme 1000
+```
+
+Nested processes configuration:
+
+```bash
+npm run krpsim resources/inception 100
 ```
 
 ### krpsim_verif Verification Program
 
-```bash
-# Using npm script
-npm run krpsim_verif resources/simple resources/simple.log
+Using npm script:
 
-# Or directly
+```bash
+npm run krpsim_verif resources/simple resources/simple.log
+```
+
+Or directly:
+
+```bash
 node dist/krpsim_verif.js resources/simple resources/simple.log
 ```
 
 Examples:
 
-```bash
-# Verify simple configuration
-npm run krpsim_verif resources/simple resources/simple.log
+Verify simple configuration:
 
-# Verify apple configuration
+```bash
+npm run krpsim_verif resources/simple resources/simple.log
+```
+
+Verify apple configuration:
+
+```bash
 npm run krpsim_verif resources/pomme resources/pomme.log
 ```
 
@@ -76,8 +110,10 @@ npm run krpsim_verif resources/pomme resources/pomme.log
 - `file` - configuration file (required)
 - `delay` - maximum execution time in seconds (required)
 - `-c, --cycle` - maximum number of cycles (default: 10000)
-- `-p, --process` - maximum number of processes (default: 1000)
-- `-i, --instructions` - maximum number of instructions (default: 10000)
+- `-g, --generations` - maximum number of generations for genetic algorithm (default: 1000)
+- `-i, --instructions` - maximum number of instructions allowed during process generation (default: 10000)
+- `--help` - show help information
+- `--version` - show version information
 
 ### krpsim_verif.js
 
@@ -86,13 +122,94 @@ npm run krpsim_verif resources/pomme resources/pomme.log
 
 ## NPM Scripts
 
+Build project:
+
 ```bash
-# Main commands
-npm run build          # Build project
-npm run dev            # Run in development mode
-npm run clean          # Remove build files and .log files
-npm run clean_all      # Remove build files, .log files, node_modules and package-lock.json
-npm run krpsim_verif   # Run verifier
+npm run build
+```
+
+Run in development mode:
+
+```bash
+npm run dev
+```
+
+Run main simulator:
+
+```bash
+npm run krpsim
+```
+
+Run verifier:
+
+```bash
+npm run krpsim_verif
+```
+
+Remove build files and .log files:
+
+```bash
+npm run clean
+```
+
+Remove build files, .log files, node_modules and package-lock.json:
+
+```bash
+npm run clean_all
+```
+
+## Usage Examples
+
+### Help and Version Information
+
+Show help:
+
+```bash
+npm run krpsim -- --help
+```
+
+Show help (direct):
+
+```bash
+node dist/krpsim.js --help
+```
+
+Show version:
+
+```bash
+npm run krpsim -- --version
+```
+
+Show version (direct):
+
+```bash
+node dist/krpsim.js --version
+```
+
+### Custom Parameters
+
+Run with custom cycle limit:
+
+```bash
+npm run krpsim -- resources/pomme 1000 -c 5000
+```
+
+Run with custom generation limit:
+
+```bash
+npm run krpsim -- resources/inception 100 -g 2000
+```
+
+Run with custom instruction limit:
+
+```bash
+npm run krpsim -- resources/steak 30 -i 5000
+```
+
+Combine multiple parameters:
+
+```bash
+npm run krpsim -- resources/pomme 1000 -c 5000 -g 2000 -i 5000
 ```
 
 ## Project Structure
@@ -143,12 +260,14 @@ The program provides detailed and structured output:
 
 ### Algorithm
 
-Uses a hybrid approach:
+Uses a sophisticated hybrid approach:
 
-- Genetic algorithm for optimization
-- Reverse planning (backtracking)
-- Greedy/random process selection
-- Discrete event simulation
+- **Genetic Algorithm**: Multi-generation optimization with configurable population size
+- **Complex Scenario Detection**: Automatic identification of self-referencing processes and resource chains
+- **Intelligent Planning**: Two-phase approach with planning and execution phases
+- **Resource Chain Building**: Automatic construction of optimal resource production chains
+- **Process Prioritization**: Value-based sorting of processes by resource complexity
+- **Discrete Event Simulation**: Cycle-based execution with configurable limits
 
 ## TypeScript Version Advantages
 
