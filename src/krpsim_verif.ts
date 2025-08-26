@@ -27,24 +27,8 @@ class Verification {
 
   public execute(): void {
     // Read and parse trace file
-    let traceContent: string;
-    let traceLines: string[];
-
-    try {
-      traceContent = fs.readFileSync(this.trace, 'utf-8');
-      traceLines = traceContent.split('\n').filter((line) => line.trim());
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('ENOENT')) {
-        console.error(`🔴 Error: Trace file '${this.trace}' does not exist.`);
-      } else {
-        console.error(
-          `🔴 Error: Failed to read trace file '${this.trace}': ${errorMessage}`
-        );
-      }
-      process.exit(1);
-    }
+    const traceContent = fs.readFileSync(this.trace, 'utf-8');
+    const traceLines = traceContent.split('\n').filter((line) => line.trim());
 
     // Check if trace file is empty
     if (traceLines.length === 0) {
@@ -52,26 +36,11 @@ class Verification {
     }
 
     // Load configuration file and initialize processes
-    try {
-      this.optimizationTarget = ProcessInitializer.readProcessFile(
-        this.file,
-        this.stock,
-        this.processList
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('ENOENT')) {
-        console.error(
-          `🔴 Error: Configuration file '${this.file}' does not exist.`
-        );
-      } else {
-        console.error(
-          `🔴 Error: Failed to read configuration file '${this.file}': ${errorMessage}`
-        );
-      }
-      process.exit(1);
-    }
+    this.optimizationTarget = ProcessInitializer.readProcessFile(
+      this.file,
+      this.stock,
+      this.processList
+    );
     this.initialStock = { ...this.stock }; // Save initial state for display
 
     // Collect all resources mentioned in processes
