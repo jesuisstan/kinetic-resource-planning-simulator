@@ -76,8 +76,8 @@ class Simulation {
       process.exit(1);
     }
 
-    if (delay < 0) {
-      console.error('🔴 Error: Delay cannot be negative.');
+    if (delay <= 0) {
+      console.error('🔴 Error: Delay cannot be negative or zero.');
       process.exit(1);
     }
 
