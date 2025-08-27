@@ -244,19 +244,19 @@ export class ErrorManager {
     errorType: number
   ): void {
     const errorMessages: { [key: number]: string } = {
-      0: 'Error: Disordered cycles.',
-      1: `Error: Stock ${stockElement} is negative at cycle ${cycle}.`,
-      2: `Error: Process ${processName} is not defined.`,
-      3: `Error: Process ${processName} does not respect the order of processes.`,
-      4: `Error: Process ${processName} has constraints that are not satisfied.`,
-      5: `Error: Process ${processName} has a negative cycle ${cycle}.`,
-      6: `Error: Process ${processName} triggered without respecting the daily condition at cycle ${cycle}.`,
-      7: `Error: Cycles out of order, process ${processName} at cycle ${cycle} started after cycle ${stockElement}.`,
-      8: `Error: Process ${processName} triggered without satisfying all conditions at cycle ${cycle}.\nAdditional Info: ${stockElement}`,
-      9: 'Error: The trace file is empty.',
-      10: `Error: Malformed or empty line in the trace file: ${stockElement}`,
-      11: `Error: Process ${processName} cycle ${cycle} is not a number.`,
-      12: `Error: ${stockElement}`
+      0: '🔴 Error: Disordered cycles.',
+      1: `🔴 Error: Stock ${stockElement} is negative at cycle ${cycle}.`,
+      2: `🔴 Error: Process ${processName} is not defined.`,
+      3: `🔴 Error: Process ${processName} does not respect the order of processes.`,
+      4: `🔴 Error: Process ${processName} has constraints that are not satisfied.`,
+      5: `🔴 Error: Process ${processName} has a negative cycle ${cycle}.`,
+      6: `🔴 Error: Process ${processName} triggered without respecting the daily condition at cycle ${cycle}.`,
+      7: `🔴 Error: Cycles out of order, process ${processName} at cycle ${cycle} started after cycle ${stockElement}.`,
+      8: `🔴 Error: Process ${processName} triggered without satisfying all conditions at cycle ${cycle}.\nAdditional Info: ${stockElement}`,
+      9: '🔴 Error: The trace file is empty.',
+      10: `🔴 Error: Malformed or empty line in the trace file: ${stockElement}`,
+      11: `🔴 Error: Process ${processName} cycle ${cycle} is not a number.`,
+      12: `🔴 Error: ${stockElement}`
     };
 
     console.log(`\n${errorMessages[errorType]}\n`);
