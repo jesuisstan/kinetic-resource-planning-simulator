@@ -112,6 +112,7 @@ npm run krpsim_verif resources/pomme resources/pomme.log
 - `-c, --cycle` - maximum number of cycles (default: 10000)
 - `-g, --generations` - maximum number of generations for genetic algorithm (default: 1000)
 - `-i, --instructions` - maximum number of instructions allowed during process generation (default: 10000)
+- `-t, --table` - show detailed generation score analysis table
 - `--help` - show help information
 - `--version` - show version information
 
@@ -210,6 +211,12 @@ Combine multiple parameters:
 
 ```bash
 npm run krpsim -- resources/pomme 1000 -c 5000 -g 2000 -i 5000
+```
+
+Show generation score analysis:
+
+```bash
+npm run krpsim -- resources/pomme 1000 --generations 50 -t
 ```
 
 ## Project Structure

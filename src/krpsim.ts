@@ -3,7 +3,13 @@ import * as cliProgress from 'cli-progress';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MainWalk } from './MainWalk';
-import { StockManager, ProcessInitializer, ErrorManager } from './utils';
+import {
+  StockManager,
+  ProcessInitializer,
+  ErrorManager,
+  TablePrinter,
+  GenerationScore
+} from './utils';
 import { Stock, ProcessList } from './types';
 
 /**
@@ -23,6 +29,7 @@ class Simulation {
   private maxDelay = 0; // User-specified time limit (from command line)
   private maxInstructions = 10000; // Maximum process executions allowed in planning phase
   private maxGenerations = 1000; // Maximum optimization attempts (genetic algorithm iterations)
+  private showScoreTable = false; // Flag to show generation score table
 
   constructor(startTime: number) {
     this.startTime = startTime;
@@ -52,6 +59,12 @@ class Simulation {
         default: 10000,
         describe: 'max number of instructions allowed during process generation'
       })
+      .option('t', {
+        alias: 'table',
+        type: 'boolean',
+        default: false,
+        describe: 'show generation score table'
+      })
       .help()
       .parseSync();
 
@@ -73,6 +86,7 @@ class Simulation {
     this.maxDelay = delay; // User time limit (main constraint)
     this.maxInstructions = argv.i; // Planning phase limit
     this.maxGenerations = argv.g; // Optimization iterations limit
+    this.showScoreTable = argv.t; // Set the flag for score table
 
     if (this.maxGenerations < 1) {
       ErrorManager.errorType('bad_processes');
@@ -118,14 +132,30 @@ class Simulation {
       this.fileName
     );
 
+    let generationsCreated = 1; // Count the first generation
+    const allScores: GenerationScore[] = [];
+
+    // Log first generation if table is requested
+    if (this.showScoreTable) {
+      allScores.push({
+        generation: 1,
+        score: mainWalkInstance.score,
+        loop: mainWalkInstance.loop
+      });
+    }
+
     // Try multiple optimization attempts (genetic algorithm approach)
     for (let i = 0; i < this.maxGenerations - 1; i++) {
       const deltaTime = Date.now() - this.startTime;
       if (deltaTime > this.maxDelay * 1000) {
         // Convert to milliseconds - stop if we exceed user time limit
+        console.log(
+          `⏰ Time limit reached after ${generationsCreated} generations`
+        );
         break;
       }
       progressBar.increment();
+      generationsCreated++;
 
       // Create new MainWalk instance (different random choices lead to different solutions)
       const newMainWalk = new MainWalk(
@@ -137,6 +167,15 @@ class Simulation {
         this.maxDelay,
         this.fileName
       );
+
+      // Log this generation if table is requested
+      if (this.showScoreTable) {
+        allScores.push({
+          generation: generationsCreated,
+          score: newMainWalk.score,
+          loop: newMainWalk.loop
+        });
+      }
 
       // Keep the best solution based on multiple criteria
       if (newMainWalk.loop > mainWalkInstance.loop) {
@@ -159,6 +198,15 @@ class Simulation {
     }
 
     progressBar.stop();
+    console.log(
+      `🧬 Created ${generationsCreated} generations (max: ${this.maxGenerations})`
+    );
+
+    // Display score statistics only if requested
+    if (this.showScoreTable) {
+      TablePrinter.printGenerationScoreTable(allScores);
+    }
+
     console.log('============================================================');
     return mainWalkInstance;
   }

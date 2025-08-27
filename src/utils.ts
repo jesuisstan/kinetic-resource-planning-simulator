@@ -333,3 +333,139 @@ export class ScenarioAnalyzer {
     });
   }
 }
+
+export interface GenerationScore {
+  generation: number;
+  score: number;
+  loop: boolean;
+}
+
+export class TablePrinter {
+  /**
+   * Print generation score analysis table with proper alignment
+   */
+  static printGenerationScoreTable(scores: GenerationScore[]): void {
+    if (scores.length === 0) return;
+
+    // Calculate column widths based on header and content
+    const columnWidths = this.calculateColumnWidths(scores);
+
+    // Print header
+    this.printTableHeader(columnWidths);
+
+    // Print data rows
+    let bestScore = -Infinity;
+    let bestGeneration = 0;
+
+    scores.forEach((gen) => {
+      const improvement =
+        gen.score > bestScore ? '↑' : gen.score === bestScore ? '=' : '↓';
+      if (gen.score > bestScore) {
+        bestScore = gen.score;
+        bestGeneration = gen.generation;
+      }
+
+      this.printDataRow(gen, improvement, columnWidths);
+    });
+
+    // Print footer
+    this.printTableFooter(columnWidths, bestScore, bestGeneration);
+  }
+
+  private static calculateColumnWidths(scores: GenerationScore[]): {
+    generation: number;
+    score: number;
+    loop: number;
+    improvement: number;
+  } {
+    // Header widths
+    const headerWidths = {
+      generation: 'Generation'.length,
+      score: 'Score'.length,
+      loop: 'Loop'.length,
+      improvement: 'Improvement'.length
+    };
+
+    // Calculate content widths
+    const contentWidths = {
+      generation: Math.max(
+        ...scores.map((s) => s.generation.toString().length)
+      ),
+      score: Math.max(...scores.map((s) => s.score.toFixed(4).length)),
+      loop: 3, // "Yes" or "No" (both 3 chars with padding)
+      improvement: 1 // "↑", "=", or "↓"
+    };
+
+    // Return maximum of header and content widths
+    return {
+      generation: Math.max(headerWidths.generation, contentWidths.generation),
+      score: Math.max(headerWidths.score, contentWidths.score),
+      loop: Math.max(headerWidths.loop, contentWidths.loop),
+      improvement: Math.max(headerWidths.improvement, contentWidths.improvement)
+    };
+  }
+
+  private static printTableHeader(
+    widths: ReturnType<typeof this.calculateColumnWidths>
+  ): void {
+    const totalWidth =
+      2 +
+      widths.generation +
+      3 +
+      widths.score +
+      3 +
+      widths.loop +
+      3 +
+      widths.improvement +
+      2;
+
+    console.log('\n📊 Generation Score Analysis:');
+    console.log('┌' + '─'.repeat(totalWidth - 2) + '┐');
+    console.log(
+      `│ ${'Generation'.padEnd(widths.generation)} │ ${'Score'.padEnd(
+        widths.score
+      )} │ ${'Loop'.padEnd(widths.loop)} │ ${'Improvement'.padEnd(
+        widths.improvement
+      )} │`
+    );
+    console.log('├' + '─'.repeat(totalWidth - 2) + '┤');
+  }
+
+  private static printDataRow(
+    gen: GenerationScore,
+    improvement: string,
+    widths: ReturnType<typeof this.calculateColumnWidths>
+  ): void {
+    const loopValue = gen.loop ? 'Yes' : 'No';
+
+    console.log(
+      `│ ${gen.generation.toString().padStart(widths.generation)} │ ${gen.score
+        .toFixed(4)
+        .padStart(widths.score)} │ ${loopValue.padEnd(
+        widths.loop
+      )} │ ${improvement.padStart(widths.improvement)} │`
+    );
+  }
+
+  private static printTableFooter(
+    widths: ReturnType<typeof this.calculateColumnWidths>,
+    bestScore: number,
+    bestGeneration: number
+  ): void {
+    const totalWidth =
+      2 +
+      widths.generation +
+      3 +
+      widths.score +
+      3 +
+      widths.loop +
+      3 +
+      widths.improvement +
+      2;
+
+    console.log('└' + '─'.repeat(totalWidth - 2) + '┘');
+    console.log(
+      `🏆 Best score: ${bestScore.toFixed(4)} (Generation ${bestGeneration})`
+    );
+  }
+}
